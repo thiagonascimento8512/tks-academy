@@ -142,7 +142,7 @@
   /* "seu treino de hoje": plano do dia, diagnóstico e progresso */
   const days=[...document.querySelectorAll("#days .day")],today=days[(new Date().getDay()+6)%7];
   const tdN=today?today.querySelector(".dn").textContent:"",tdT=today?today.querySelector("h4").textContent:"",tdP=today?today.querySelector("p").textContent:"";
-  let dg=null;try{const d=JSON.parse(localStorage.getItem("tksDiag")||"{}"),l=(d[matchMedia("(pointer:coarse)").matches?"touch":"mouse"]||[]).filter(e=>Object.keys(e.s).length===4).pop();if(l)dg=Math.round(Object.values(l.s).reduce((a,b)=>a+b,0)/4)}catch(e){}
+  let dg=null;try{const d=JSON.parse(localStorage.getItem("tksDiag")||"{}"),l=(d[matchMedia("(pointer:coarse)").matches?"mobile":"mouse"]||[]).filter(e=>Object.keys(e.s).length===4).pop();if(l)dg=Math.round(Object.values(l.s).reduce((a,b)=>a+b,0)/4)}catch(e){}
   const prog=(document.getElementById("progressPct")||{}).textContent||"0%";
   home.innerHTML=`<div class="hm-today">
       <a class="td-main" href="#plano"><small>Seu treino de hoje · ${tdN.toLowerCase()}</small><b>${tdT}</b><span>${tdP}</span></a>
@@ -208,7 +208,7 @@
   const nodes=[...card.querySelectorAll(".cy-node")],T=document.getElementById("cyT"),N=document.getElementById("cyN"),D=document.getElementById("cyD");
   const S=[0,1,2,3].map(i=>(card.dataset["s"+i]||"|").split("|"));
   let i=0,auto=!matchMedia("(prefers-reduced-motion: reduce)").matches,timer=null;
-  function set(k){i=k;nodes.forEach((n,j)=>n.classList.toggle("on",j===k));T.textContent=S[k][0];N.textContent=`passo ${k+1} de 4`;D.innerHTML=`<b>${k+1} · ${S[k][0]}:</b> ${S[k][1]}`}
+  function set(k){i=k;nodes.forEach((n,j)=>n.classList.toggle("on",j===k));T.textContent=S[k][0];N.textContent=`passo ${k+1} de 4`;D.innerHTML=`<span><b>${k+1} · ${S[k][0]}:</b> ${S[k][1]}</span>`}
   function loop(){clearInterval(timer);if(auto)timer=setInterval(()=>{if(!document.hidden)set((i+1)%4)},2600)}
   nodes.forEach((n,k)=>{const go=()=>{auto=false;clearInterval(timer);set(k)};n.addEventListener("click",go);n.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();go()}})});
   set(0);loop();
@@ -492,7 +492,7 @@
   cv.addEventListener("pointerdown",e=>{e.preventDefault();try{cv.setPointerCapture(e.pointerId)}catch(_){}
     if(T){if(portrait())return;const q=xy(e);
       if(fireZone(q.x)){if(IN.fireId===null){IN.fireId=e.pointerId;IN.fire=true;if(onFire)onFire()}}
-      else if(IN.aimId===null){IN.aimId=e.pointerId;IN.ax=q.x;IN.ay=q.y}
+      else if(IN.aimId===null){IN.aimId=e.pointerId;IN.ax=q.x;IN.ay=q.y;IN.downs=(IN.downs||0)+1}
       return}
     pos(e);P.down=true;if(onDown)onDown(e)});
   cv.addEventListener("pointermove",e=>{
@@ -542,7 +542,7 @@
   let curRej=null;
   function screen(html){return new Promise((res,rej)=>{scr.innerHTML=html;scr.hidden=false;curRej=rej;
     scr.querySelectorAll("[data-go]").forEach(x=>x.onclick=()=>{curRej=null;scr.hidden=true;res(x.dataset.go)});
-    const b=scr.querySelector("[data-go]");if(b)b.focus()})}
+    const b=scr.querySelector("[data-go]");if(b)b.focus({preventScroll:true});const c=scr.querySelector(".dg-card");if(c)c.scrollTop=0})}
   async function countdown(){for(let i=3;i>0;i--){const t0=clk();while(clk()-t0<600){await frame();bg();text(String(i),T?H*.3:H/2,Math.round(M*(T?.16:.22)),"#f2bd52");ctrls(true)}}}
   function open(){abort=false;ov.hidden=false;document.documentElement.classList.add("dg-lock");size();bg();
     cam.x=cam.y=0;relAll();
@@ -648,6 +648,9 @@
 
   /* =========== modo celular: mira fixa, câmera no dedo direito, tiro no botão esquerdo =========== */
   const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+  const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
+  /* medições usadas nas dicas de sensibilidade (só no celular) */
+  let MET={flick:[],track:null,recoil:[],fouls:0,med:0};
   async function flash(ms,draw){const f0=clk();while(clk()-f0<ms){await frame();bg();draw();ctrls()}}
   /* 1. reação: o alvo surge na mira; atire o mais rápido possível */
   async function mReaction(){
@@ -667,6 +670,7 @@
       times.push(res);await flash(700,()=>text(Math.round(res)+" ms",H*.28,Math.round(M*.1),"#65df9a"));
     }
     const s=[...times].sort((a,b)=>a-b),med=s[Math.floor(s.length/2)];
+    MET.fouls=fouls;MET.med=med;
     const score=Math.max(0,lin(med,540,240)-fouls*4);
     return{score,raw:Math.round(med)+" ms"+(fouls?` · ${fouls} ${fouls>1?"antecipações":"antecipação"}`:""),v:Math.round(med)};
   }
@@ -681,11 +685,14 @@
     for(let i=0;i<N;i++){
       hudP.textContent=`${i+1} de ${N}`;
       const q0=spot(r),tw={x:q0.x+cam.x,y:q0.y+cam.y},t0=clk();let out=null;
+      const a0=AIM(),d0=dist(a0,tw),u={x:(tw.x-a0.x)/d0,y:(tw.y-a0.y)/d0},dn0=IN.downs||0;let over=false,reach=null;
       onFire=()=>{out=dist(AIM(),tw)<=r*1.15?"hit":"miss"};
       while(out===null){await frame();const age=clk()-t0;if(age>LIFE){out="late";break}
+        {const a=AIM(),pr=(a.x-a0.x)*u.x+(a.y-a0.y)*u.y;if(pr>d0+r*1.5)over=true;if(reach===null&&dist(a,tw)<=r)reach=age}
         bg();const q=S(tw);target(q.x,q.y,r,dist(AIM(),tw)<=r*1.15);cx.strokeStyle="rgba(242,189,82,.7)";cx.lineWidth=3;cx.beginPath();cx.arc(q.x,q.y,r+7,-Math.PI/2,-Math.PI/2+Math.PI*2*(1-age/LIFE));cx.stroke();
         ctrls();DBG.t="precisao";DBG.i=i;DBG.tw=tw;}
       onFire=null;
+      MET.flick.push({over,reach,drags:(IN.downs||0)-dn0,moved:dist(AIM(),a0)>r});
       if(out==="hit")hits.push(clk()-t0);else miss++;
       await flash(160,()=>{const q=S(tw);if(out==="hit")target(q.x,q.y,r,true);else{cx.strokeStyle="#ff3048";cx.lineWidth=3;cross(q.x,q.y,r)}});
     }
@@ -698,10 +705,13 @@
   async function mTrack(){
     const DUR=12000,r=Math.max(24,M*.065),c0=AIM(),ax=W*.3,ay=(H-90)*.3;
     const ph=[Math.random()*6,Math.random()*6,Math.random()*6,Math.random()*6];
-    let on=0,tot=0,t0=clk(),trail=[];
+    let on=0,tot=0,t0=clk(),trail=[],prev=null,lags=[],cross=0,lastSg=0;
     const path=t=>{const k=t/1000*.8,sp=1+t/DUR*.8;return{x:c0.x+ax*(.65*Math.sin(k*.9*sp+ph[0])+.35*Math.sin(k*2.1*sp+ph[1])),y:c0.y+ay*(.6*Math.sin(k*1.2*sp+ph[2])+.4*Math.cos(k*2.6*sp+ph[3]))}};
     while(true){await frame();const t=clk()-t0;if(t>DUR)break;
       const tw=path(t),near=dist(AIM(),tw)<=r*1.15,inside=near&&IN.fire;tot++;if(inside)on++;
+      if(prev){const a=AIM(),vx=tw.x-prev.x,vy=tw.y-prev.y,vm=Math.hypot(vx,vy);
+        if(vm>.3&&dist(a,tw)<r*3&&IN.fire){const al=((a.x-tw.x)*vx+(a.y-tw.y)*vy)/vm/r;lags.push(al);const sg=al>.2?1:al<-.2?-1:0;if(sg&&lastSg&&sg!==lastSg)cross++;if(sg)lastSg=sg}}
+      prev=tw;
       DBG.t="rastreio";DBG.tw=tw;
       trail.push(tw);if(trail.length>24)trail.shift();
       bg();cx.strokeStyle="rgba(242,189,82,.25)";cx.lineWidth=2;cx.beginPath();trail.forEach((w,i)=>{const q=S(w);i?cx.lineTo(q.x,q.y):cx.moveTo(q.x,q.y)});cx.stroke();
@@ -712,6 +722,7 @@
       hudP.textContent=`${Math.round(on/tot*100)}% no alvo`;
     }
     const pct=on/Math.max(1,tot);
+    MET.track={lag:mean(lags),cross:cross/(DUR/1000),n:lags.length};
     return{score:lin(pct,.2,.85),raw:Math.round(pct*100)+"% do tempo no alvo",v:Math.round(pct*100)};
   }
   /* 4. recuo: segure o tiro; a câmera sobe com o coice e o dedo direito puxa para baixo */
@@ -737,6 +748,7 @@
       }
       if(fired<10){await flash(1100,()=>text("Segure até o fim do spray",H*.3,Math.round(M*.06),"#ff3048"));s--;continue}
       devs.push(dsum/fired);
+      {const late=holes.slice(8);MET.recoil.push({vy:mean(late.map(h=>(h.y-board.y)/M)),vx:mean(late.map(h=>Math.abs(h.x-board.x)/M))})}
       await flash(800,()=>{const b=S(board);cx.fillStyle="#ff3048";holes.forEach(h=>{const q=S(h);cx.beginPath();cx.arc(q.x,q.y,Math.max(3,M*.008),0,7);cx.fill()});[M*.04,M*.1,M*.18].forEach(rr=>{cx.strokeStyle="rgba(255,255,255,.2)";cx.beginPath();cx.arc(b.x,b.y,rr,0,7);cx.stroke()})});
     }
     const avg=devs.reduce((a,b)=>a+b,0)/devs.length;
@@ -758,10 +770,52 @@
   const sensUI=()=>`<label class="dg-sens"><span>Sensibilidade do teste <output>${SENS}%</output></span><input type="range" min="50" max="200" step="10" value="${SENS}" aria-label="Sensibilidade do teste"></label>`;
   function bindSens(){const i=scr.querySelector(".dg-sens input");if(!i)return;const o=scr.querySelector(".dg-sens output");
     i.oninput=()=>{SENS=+i.value;o.textContent=SENS+"%";db.cfg=Object.assign({},db.cfg,{sens:SENS});saveDb()}}
+    /* ---------- dicas: direção do ajuste, nunca um número ---------- */
+  const SETS={cam:"Câmera",ads:"ADS",tec:"Técnica"};
+  function genTips(keys){if(!T)return[];const t=[];
+    if(keys.includes("precisao")){const f=MET.flick.filter(x=>x.moved);
+      if(f.length>=6){const ov=f.filter(x=>x.over).length/f.length,sl=f.filter(x=>!x.over&&(x.reach===null||x.reach>1300||x.drags>=3)).length/f.length;
+        if(ov>=.4&&ov>sl)t.push({k:"precisao",s:"cam",d:"down",c:ov>=.6?"alta":"média",w:`A mira passou do alvo em ${Math.round(ov*100)}% das vezes antes do tiro.`});
+        else if(sl>=.35&&ov<.2)t.push({k:"precisao",s:"cam",d:"up",c:sl>=.6?"alta":"média",w:`Em ${Math.round(sl*100)}% dos alvos você chegou devagar ou precisou de várias arrastadas.`});
+        else t.push({k:"precisao",s:"cam",d:"keep",c:"média",w:"Você chegou aos alvos sem passar muito nem ficar curto."})}}
+    let ads=null;
+    if(keys.includes("recuo")&&MET.recoil.length){const vy=mean(MET.recoil.map(x=>x.vy)),vx=mean(MET.recoil.map(x=>x.vx)),same=MET.recoil.filter(x=>Math.sign(x.vy)===Math.sign(vy)&&Math.abs(x.vy)>.02).length;
+      if(vy<-.03)ads={k:"recuo",s:"ads",d:"up",c:same>=3?"alta":"média",w:"No spray os tiros terminaram acima do centro: faltou puxar. Se você já puxa o máximo confortável, suba a ADS; se não, puxe mais firme antes de mexer."};
+      else if(vy>.03)ads={k:"recuo",s:"ads",d:"down",c:same>=3?"alta":"média",w:"No spray os tiros terminaram abaixo do centro: você puxou demais."};
+      else ads={k:"recuo",s:"ads",d:"keep",c:"média",w:"No spray os tiros ficaram na altura do centro."};
+      if(vx>.035)t.push({k:"recuo",s:"tec",d:"tip",c:"média",w:"Os tiros espalharam para os lados. Isso é controle lateral, não sensibilidade: faça sprays curtos corrigindo para a esquerda e a direita."})}
+    if(keys.includes("rastreio")&&MET.track&&MET.track.n>60){const {lag,cross}=MET.track;
+      const tr=lag<-.45?"up":(lag>.25||cross>1.4)?"down":"keep";
+      const why=tr==="up"?"No rastreamento a mira ficou atrás do alvo.":tr==="down"?"No rastreamento a mira passou na frente do alvo e voltou várias vezes.":"No rastreamento a mira acompanhou bem o alvo.";
+      if(!ads)ads={k:"rastreio",s:"ads",d:tr,c:"média",w:why};
+      else if(ads.d===tr){ads.c="alta";ads.w+=" "+why.replace("No rastreamento","O rastreamento confirma:").replace(" a mira"," a mira")}
+      else if(tr!=="keep"&&ads.d!=="keep"){ads.d="keep";ads.c="baixa";ads.w="Spray e rastreamento apontaram direções opostas. Mantenha a ADS e refaça os dois testes para confirmar."}}
+    if(ads)t.push(ads);
+    if(keys.includes("reacao")){if(MET.fouls>=2)t.push({k:"reacao",s:"tec",d:"tip",c:"alta",w:`Você atirou antes do alvo ${MET.fouls} vezes. Espere ver o inimigo: no jogo, atirar cedo entrega sua posição.`});
+      else if(MET.med>380)t.push({k:"reacao",s:"tec",d:"tip",c:"média",w:"Reação acima de 380 ms. Deixe a mira já na altura onde o inimigo vai aparecer e jogue com o FPS mais alto que o aparelho aguentar."})}
+    return t}
+  const DIR={up:["▲","Aumentar"],down:["▼","Diminuir"],keep:["●","Manter"],tip:["!","Dica"]};
+  function tipsHTML(list,foot){if(!list||!list.length)return"";
+    return `<div class="dg-tips"><small>Ajuste sugerido</small><ul>${list.map(x=>`<li class="t-${x.d}"><span class="t-dir"><i>${DIR[x.d][0]}</i>${DIR[x.d][1]}</span><div><b>${x.s==="tec"?"Técnica":"Sensibilidade "+SETS[x.s]}${x.s==="cam"?" <em>mover a mira sem atirar</em>":x.s==="ads"?" <em>mover a mira atirando</em>":""}</b><p>${esc(x.w)}</p><span class="t-conf">Confiança ${x.c}</span></div></li>`).join("")}</ul>
+      ${foot?`<p class="dg-tnote">Mude 5 a 10 pontos, uma sensibilidade por vez, e refaça o teste. A sensibilidade do teste não é a do jogo: siga a direção, não o número. Se você joga com giroscópio, estas dicas valem para o arraste na tela.</p>`:""}</div>`}
+  /* ---------- gráfico de evolução ---------- */
+  function hist(list,k){return list.filter(e=>k==="all"?Object.keys(e.s).length===4:e.s[k]!=null).slice(-10).map(e=>({v:k==="all"?Math.round(Object.values(e.s).reduce((a,b)=>a+b,0)/4):e.s[k],d:e.d}))}
+  function evoChart(pts,title){
+    if(pts.length<2)return `<div class="dg-evo"><small>${title}</small><p class="dg-evo-empty">${pts.length?`Primeira nota: <b>${pts[0].v}</b>. Refaça depois de treinar para ver a evolução.`:"Ainda sem resultados."}</p></div>`;
+    const w=420,h=150,px=30,py=16,X=i=>px+i*(w-px-14)/(pts.length-1),Y=v=>py+(h-py-24)*(1-v/100);
+    let g=`<svg viewBox="0 0 ${w} ${h}" class="dg-chart" role="img" aria-label="${title}: ${pts.map(p=>p.v).join(", ")}">`;
+    [0,50,100].forEach(v=>{g+=`<line x1="${px}" x2="${w-8}" y1="${Y(v)}" y2="${Y(v)}" class="cg"/><text x="${px-6}" y="${Y(v)+4}" class="ct" text-anchor="end">${v}</text>`});
+    const d=pts.map((p,i)=>`${i?"L":"M"}${X(i).toFixed(1)} ${Y(p.v).toFixed(1)}`).join(" ");
+    g+=`<path d="${d} L${X(pts.length-1).toFixed(1)} ${Y(0)} L${X(0)} ${Y(0)}Z" class="ca"/><path d="${d}" class="cl"/>`;
+    pts.forEach((p,i)=>{const last=i===pts.length-1;g+=`<circle cx="${X(i)}" cy="${Y(p.v)}" r="${last?5:3.5}" class="${last?"cdl":"cd"}"/>`;if(last||i===0)g+=`<text x="${X(i)}" y="${Y(p.v)-10}" class="cv" text-anchor="${i===0?"start":"end"}">${p.v}</text>`});
+    const f=s=>new Date(s).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"});
+    g+=`<text x="${X(0)}" y="${h-4}" class="ct">${f(pts[0].d)}</text><text x="${X(pts.length-1)}" y="${h-4}" class="ct" text-anchor="end">${f(pts[pts.length-1].d)}</text></svg>`;
+    const dv=pts[pts.length-1].v-pts[0].v;
+    return `<div class="dg-evo"><small>${title}</small>${g}<p class="dg-evo-d ${dv>0?"up":dv<0?"down":""}">${dv>0?"▲ +"+dv:dv<0?"▼ "+dv:"="} desde ${f(pts[0].d)} · ${pts.length} rodadas</p></div>`}
   /* ---------- execução ---------- */
   let pcOk=false;
   async function run(keys){
-    open();const out={};
+    open();const out={};MET={flick:[],track:null,recoil:[],fouls:0,med:0};
     try{
       if(!T&&!pcOk){hudT.textContent="Diagnóstico";hudP.textContent="";bg();
         const g=await screen(`<div class="dg-card dg-pc"><p class="dg-step">Feito para celular</p><h3>Melhor no celular</h3><p>No celular, com o aparelho deitado, o botão de tiro fica à esquerda e o dedo direito move a câmera, como no PUBG Mobile. Abra este site no celular para o resultado que vale.</p><p class="dg-dur">No computador você joga com o mouse, e o resultado fica separado do celular.</p><div class="dg-acts"><button type="button" class="btn" data-go="1">Jogar com o mouse</button><button type="button" class="btn secondary" data-go="x">Voltar</button></div></div>`);
@@ -771,13 +825,23 @@
         const pr=screen(`<div class="dg-card"><p class="dg-step">${keys.length>1?`Teste ${keys.indexOf(k)+1} de ${keys.length}`:"Teste"}</p><h3>${HOW[k][0]}</h3><p>${HOW[k][1]}</p>${T?CTRL:""}<p class="dg-dur">${HOW[k][2]}</p>${T?sensUI():""}<button type="button" class="btn" data-go="1">Começar</button></div>`);
         bindSens();await pr;
         cam.x=cam.y=0;DBG.t="contagem";await countdown();out[k]=await RUN[k]();
+        if(keys.length>1&&keys.indexOf(k)<keys.length-1){
+          const pv=[...(db[DEV]||[])].reverse().find(e=>e.s[k]!=null),dl=pv?out[k].score-pv.s[k]:null,sc=out[k].score;
+          hudT.textContent=HOW[k][0];hudP.textContent="Concluído";bg();
+          await screen(`<div class="dg-card dg-one"><p class="dg-step">Teste ${keys.indexOf(k)+1} de ${keys.length} concluído</p><h3>${HOW[k][0]}</h3>
+            <div class="dg-big"><b>${sc}</b><span>/100</span></div><i class="dg-bar"><em style="width:${sc}%"></em></i>
+            <p class="dg-lvl">${level(sc)}</p>${dl!==null?`<p class="dg-dl"><span class="dg-d ${dl>0?"up":dl<0?"down":""}">${dl>0?"▲ +"+dl:dl<0?"▼ "+dl:"= igual"}</span> em relação ao teste anterior</p>`:""}<p class="dg-raw">${esc(out[k].raw)}</p>
+            ${tipsHTML(genTips([k]),false)}<button type="button" class="btn" data-go="1">Próximo teste</button></div>`)}
       }
       const entry={d:new Date().toISOString(),s:{},r:{}};keys.forEach(k=>{entry.s[k]=out[k].score;entry.r[k]=out[k].raw});
+      const tips=genTips(keys);if(tips.length)entry.t=tips;
       (db[DEV]=db[DEV]||[]).push(entry);db[DEV]=db[DEV].slice(-30);saveDb();render();
       hudT.textContent="Resultado";hudP.textContent="";bg();
       const tot=keys.length===4?Math.round(keys.reduce((a,k)=>a+out[k].score,0)/4):null;
-      const go=await screen(`<div class="dg-card dg-sum"><h3>${tot!==null?`Nota geral <b>${tot}</b>`:"Resultado"}</h3>${tot!==null?`<p class="dg-lvl">${level(tot)}</p>`:""}
-        <ul>${keys.map(k=>`<li><span>${HOW[k][0]}</span><i><em style="width:${out[k].score}%"></em></i><b>${out[k].score}</b><small>${esc(out[k].raw)}</small></li>`).join("")}</ul>
+      const one=keys.length===1?keys[0]:null,evo=evoChart(hist(db[DEV],one||(tot!==null?"all":keys[0])),one?"Sua evolução em "+HOW[one][0]:"Evolução da nota geral");
+      const go=await screen(`<div class="dg-card dg-sum"><div class="dg-sum-a"><h3>${tot!==null?`Nota geral <b>${tot}</b>`:one?`${HOW[one][0]} <b>${out[one].score}</b>`:"Resultado"}</h3>${tot!==null?`<p class="dg-lvl">${level(tot)}</p>`:one?`<p class="dg-lvl">${level(out[one].score)} · nota de 0 a 100</p>`:""}
+        <ul>${keys.map(k=>`<li><span>${HOW[k][0]}</span><i><em style="width:${out[k].score}%"></em></i><b>${out[k].score}</b><small>${esc(out[k].raw)}</small></li>`).join("")}</ul>${evo}</div>
+        <div class="dg-sum-b">${tipsHTML(tips,true)||(T?"":`<div class="dg-tips"><small>Ajuste sugerido</small><p class="dg-tnote">As dicas de sensibilidade aparecem quando você faz o teste no celular, no modo jogo.</p></div>`)}</div>
         <div class="dg-acts"><button type="button" class="btn" data-go="see">Ver perfil completo</button><button type="button" class="btn secondary" data-go="again">Refazer</button></div></div>`);
       close();
       if(go==="again")setTimeout(()=>run(keys),60);else document.getElementById("dgResult").scrollIntoView({behavior:"smooth",block:"start"});
@@ -814,13 +878,16 @@
       <p class="dg-dev">${T?"Resultados do celular (modo jogo)":"Resultados do computador (mouse)"} · ${new Date(list[list.length-1].d).toLocaleDateString("pt-BR")}</p></div></div>
       <ul class="dg-skills">${SK.map((s,i)=>{const v=vals[i],d=v!=null&&pv[i]!=null?v-pv[i]:null;return `<li><span>${s.n}</span><i><em style="width:${v??0}%"></em></i><b>${v??"—"}</b>${d?`<em class="dg-d ${d>0?"up":"down"}">${d>0?"▲":"▼"} ${Math.abs(d)}</em>`:""}<small>${v!=null?esc(p[s.k].r):"Ainda não testado"}</small></li>`}).join("")}</ul>
       ${weak?`<div class="dg-rec"><small>Ponto a treinar primeiro</small><b>${REC[weak.k][0]}</b><p>${REC[weak.k][1]}</p><a href="${REC[weak.k][2]}">${REC[weak.k][3]}</a></div>`:""}
-      ${full.length>1?`<div class="dg-hist"><small>Últimos diagnósticos completos</small><ol>${full.map(e=>{const t=Math.round(Object.values(e.s).reduce((a,b)=>a+b,0)/4);return `<li><span>${new Date(e.d).toLocaleDateString("pt-BR")}</span><i><em style="width:${t}%"></em></i><b>${t}</b></li>`}).join("")}</ol></div>`:""}
+      <div class="dg-evo-wrap"><div class="dg-evo-tabs" role="tablist" aria-label="Ver evolução de">${[["all","Nota geral"],...SK.map(s=>[s.k,s.sn||s.n])].map(([k,n],i)=>`<button type="button" role="tab" class="chipbtn${i===0?" on":""}" data-evo="${k}" aria-selected="${i===0}">${n}</button>`).join("")}</div><div id="dgEvo">${evoChart(hist(list,"all"),"Evolução da nota geral")}</div></div>
+      ${(()=>{const lt=[...list].reverse().find(e=>e.t);return lt?`<div class="dg-ptips">${tipsHTML(lt.t,true)}<p class="dg-tlinks"><a href="#sensibilidade">Ver sensibilidades TKS</a> · <a href="#lab">Abrir o laboratório</a></p></div>`:""})()}
       <button type="button" class="chipbtn dg-clear" id="dgClear">Apagar resultados deste aparelho</button>`;
+    el.querySelectorAll("[data-evo]").forEach(b=>b.onclick=()=>{el.querySelectorAll("[data-evo]").forEach(x=>{x.classList.toggle("on",x===b);x.setAttribute("aria-selected",x===b)});
+      const k=b.dataset.evo,n=k==="all"?"Evolução da nota geral":"Evolução em "+SK.find(s=>s.k===k).n;document.getElementById("dgEvo").innerHTML=evoChart(hist(list,k),n)});
     const c=document.getElementById("dgClear");
     c.onclick=()=>{if(!c.dataset.armed){c.dataset.armed="1";c.textContent="Confirmar: apagar resultados";setTimeout(()=>{if(c.isConnected){delete c.dataset.armed;c.textContent="Apagar resultados deste aparelho"}},3000);return}
       db[DEV]=[];saveDb();render()};
   }
   const devEl=document.getElementById("dgDevice");if(devEl)devEl.textContent=T?"Celular · tiro à esquerda, mira à direita":"Computador (mouse) · feito para celular";
   render();
-  window.__tksDiag={run,db:()=>db,dev:DEV,dbg:DBG,cam,aim:()=>AIM(),fire:()=>FIRE()};
+  window.__tksDiag={run,db:()=>db,dev:DEV,dbg:DBG,cam,met:()=>MET,aim:()=>AIM(),fire:()=>FIRE()};
 })();
