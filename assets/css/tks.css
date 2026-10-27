@@ -1817,3 +1817,15 @@ html{scroll-padding-top:calc(var(--top) + 84px)}
 .dg-tips li b em{display:block;margin-top:1px}
 @media (max-height:520px){.dg-screen{padding:50px 10px 8px}.dg-card{max-height:100%}}
 .dg-tips li div,.dg-tips li b,.dg-tips li b em{text-align:left}
+/* ajuda para o bloqueio de rotação */
+.dg-rot-help{margin-top:14px;max-width:34ch;padding:14px 16px;border-radius:14px;background:rgba(242,189,82,.08);border:1px solid rgba(242,189,82,.35);text-align:left}
+.dg-rot-help[hidden]{display:none}
+.dg-rot-help p{margin:0 0 8px;font-size:14px;line-height:1.45;color:#d5d9df;max-width:none}
+.dg-rot-help b{color:#fff}
+.dg-rh-t{font-family:var(--f-display);font-weight:800;font-size:18px!important;text-transform:uppercase;color:var(--gold)!important}
+.dg-rot-help.is-ios .dg-rh-and,.dg-rot-help.is-and .dg-rh-ios{display:none}
+.dg-rot-try{width:100%;min-height:46px;margin-top:4px}
+.dg-rh-msg{margin:8px 0 0!important;font-size:13px!important;color:#ffb3bd!important}
+.dg-rh-msg:empty{display:none}
+.dg-rot{overflow:auto}
+.dg-rot .dg-rot-help b{font-family:var(--f-body);font-size:inherit;font-weight:700;text-transform:none;color:#fff}

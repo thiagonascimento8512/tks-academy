@@ -470,8 +470,20 @@
 
   /* ---------- arena (tela cheia) ---------- */
   const ov=document.createElement("div");ov.className="dg-arena";ov.hidden=true;ov.setAttribute("role","dialog");ov.setAttribute("aria-modal","true");ov.setAttribute("aria-label","Diagnóstico de mira");
-  ov.innerHTML=`<canvas></canvas><div class="dg-hud"><b class="dg-title"></b><span class="dg-prog"></span><button type="button" class="dg-x" aria-label="Sair do diagnóstico">×</button></div><div class="dg-screen" hidden></div><div class="dg-rot" role="status"><svg viewBox="0 0 64 64" aria-hidden="true"><rect class="ph" x="20" y="8" width="24" height="44" rx="5"/><path class="ar" d="M50 40a20 20 0 0 1-14 14m0 0 5-1m-5 1 2-5"/></svg><b>Gire o celular</b><p>O diagnóstico funciona com o celular deitado, como no jogo.</p></div>`;
+  ov.innerHTML=`<canvas></canvas><div class="dg-hud"><b class="dg-title"></b><span class="dg-prog"></span><button type="button" class="dg-x" aria-label="Sair do diagnóstico">×</button></div><div class="dg-screen" hidden></div><div class="dg-rot" role="status"><svg viewBox="0 0 64 64" aria-hidden="true"><rect class="ph" x="20" y="8" width="24" height="44" rx="5"/><path class="ar" d="M50 40a20 20 0 0 1-14 14m0 0 5-1m-5 1 2-5"/></svg><b>Gire o celular</b><p>O diagnóstico funciona com o celular deitado, como no jogo.</p><div class="dg-rot-help" hidden><p class="dg-rh-t">Girou e nada mudou?</p><p class="dg-rh-ios">O bloqueio de rotação deve estar ligado. Abra a <b>Central de Controle</b> (deslize do canto superior direito para baixo) e toque no ícone do <b>cadeado com a seta</b> para desligá-lo.</p><p class="dg-rh-and">O bloqueio de rotação deve estar ligado. Deslize de cima para baixo para abrir as configurações rápidas e ative <b>Girar automaticamente</b> (em alguns aparelhos aparece como <b>Rotação automática</b> ou <b>Retrato</b>).</p><button type="button" class="btn dg-rot-try" hidden>Girar automaticamente</button><p class="dg-rh-msg" aria-live="polite"></p></div></div>`;
   if(T)ov.classList.add("mob");
+  /* bloqueio de rotação: depois de alguns segundos em retrato, explica como liberar */
+  const IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+  const rh=ov.querySelector(".dg-rot-help"),rTry=ov.querySelector(".dg-rot-try"),rMsg=ov.querySelector(".dg-rh-msg");
+  rh.classList.add(IOS?"is-ios":"is-and");
+  const canLock=!IOS&&!!(window.screen&&window.screen.orientation&&window.screen.orientation.lock)&&!!ov.requestFullscreen;
+  let pSince=0;
+  setInterval(()=>{if(ov.hidden||!T){pSince=0;return}const pt=innerHeight>innerWidth;
+    if(!pt){pSince=0;rh.hidden=true;return}if(!pSince)pSince=Date.now();
+    if(Date.now()-pSince>3000&&rh.hidden){rh.hidden=false;rTry.hidden=!canLock;rMsg.textContent=""}},500);
+  rTry.addEventListener("click",()=>{rMsg.textContent="";
+    const lock=()=>window.screen.orientation.lock("landscape");
+    (document.fullscreenElement?Promise.resolve():ov.requestFullscreen()).then(lock).catch(()=>{rMsg.textContent="Não deu para girar automaticamente neste navegador. Desligue o bloqueio de rotação como explicado acima."})});
   document.body.appendChild(ov);
   const cv=ov.querySelector("canvas"),cx=cv.getContext("2d"),hudT=ov.querySelector(".dg-title"),hudP=ov.querySelector(".dg-prog"),scr=ov.querySelector(".dg-screen");
   let W=0,H=0,M=0,dpr=1,abort=false,P={x:-999,y:-999,down:false},onDown=null,onUp=null;
