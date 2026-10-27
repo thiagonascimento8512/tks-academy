@@ -1,0 +1,673 @@
+/* ===== TKS ACADEMY · navegação por capítulos, numeração e interações ===== */
+(function(){
+  const CH=[
+    {n:1,name:"Aprender",ids:["comecar","fundamentos","modulos","mapas","armas","acessorios"]},
+    {n:2,name:"Mecânica",ids:["recoil","spray","sens-conceitos","sensibilidade","lab","diagnostico","hardware","hud","hudlab"]},
+    {n:3,name:"Jogo",ids:["combate","utilitarios","equipamento","veiculos","mdm"]},
+    {n:4,name:"Evolução",ids:["metodo","treino","plano","mentalidade","painel","erros","checklist"]},
+    {n:5,name:"Referência",ids:["glossario","faq","videos","compromisso"]}
+  ];
+  const secCh={inicio:CH[0]},secTitle={inicio:"Início"};
+  const plain=h=>[...h.childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent).join("").trim();
+
+  /* numeração 1.1, 1.2… nos títulos das seções */
+  CH.forEach(c=>c.ids.forEach((id,i)=>{
+    secCh[id]=c;
+    const s=document.getElementById(id),h=s&&s.querySelector(":scope>.section-head h2");
+    if(!h)return;
+    secTitle[id]=plain(h);
+    if(!h.querySelector(".sec-num")){const n=document.createElement("span");n.className="sec-num";n.textContent=c.n+"."+(i+1);h.prepend(n)}
+  }));
+
+  /* grupos recolhíveis da barra lateral */
+  const groups=[...document.querySelectorAll("#sideNav .nav-group")];
+  function setOpen(g,o){
+    g.classList.toggle("open",o);
+    g.querySelector(".nav-head").setAttribute("aria-expanded",String(o));
+    const l=g.querySelector(".nav-links");o?l.removeAttribute("inert"):l.setAttribute("inert","");
+  }
+  groups.forEach(g=>g.querySelector(".nav-head").addEventListener("click",()=>setOpen(g,!g.classList.contains("open"))));
+
+  /* capítulo atual → abre o grupo e atualiza o caminho na topbar */
+  const crumbCh=document.getElementById("crumbCh"),crumbSec=document.getElementById("crumbSec");
+  let cur=null;
+  function show(id){
+    const c=secCh[id];if(!c)return;
+    if(crumbCh){if(id==="inicio"){crumbCh.textContent="TKS Academy";crumbSec.textContent="Início"}else{crumbCh.textContent=c.name;crumbSec.textContent=secTitle[id]||c.name}}
+    if(c!==cur){cur=c;groups.forEach(g=>setOpen(g,+g.dataset.ch===c.n))}
+  }
+  CH.forEach(c=>{const h=document.getElementById("cap-"+c.n);if(h){secCh[h.id]=c;secTitle[h.id]="Capítulo "+c.n}});
+  const targets=Object.keys(secCh).map(id=>document.getElementById(id)).filter(Boolean);
+  if("IntersectionObserver" in window){
+    const io=new IntersectionObserver(es=>es.forEach(en=>{if(en.isIntersecting)show(en.target.id)}),{rootMargin:"-35% 0px -55% 0px"});
+    targets.forEach(t=>io.observe(t));
+  }
+
+  /* cartões de mapa: inclinação 3D que acompanha o cursor */
+  const fine=matchMedia("(hover:hover) and (pointer:fine)").matches,still=matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if(fine&&!still)document.querySelectorAll(".map").forEach(el=>{
+    let raf=0;
+    el.addEventListener("pointermove",e=>{
+      const r=el.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;
+      cancelAnimationFrame(raf);raf=requestAnimationFrame(()=>{el.style.transform=`perspective(900px) rotateX(${(-y*7).toFixed(2)}deg) rotateY(${(x*9).toFixed(2)}deg) translateY(-3px)`});
+    });
+    el.addEventListener("pointerleave",()=>{cancelAnimationFrame(raf);el.style.transform=""});
+  });
+
+
+  /* níveis de spray: régua de distância acompanha o nível marcado */
+  const marks=[20,30,50,100,150,200],lv=document.getElementById("levels"),fill=document.getElementById("lvlFill");
+  function paintRuler(){
+    if(!lv||!fill)return;const n=lv.querySelectorAll(".lvl.done").length;
+    fill.style.width=(n?marks[n-1]/200*100:0)+"%";
+    document.querySelectorAll("#lvlRuler span").forEach((s,i)=>s.classList.toggle("on",i<n));
+  }
+  if(lv){lv.addEventListener("click",()=>setTimeout(paintRuler,0));paintRuler()}
+
+  /* painel competitivo: gráfico das últimas partidas */
+  const chart=document.getElementById("pcChart");
+  window.tksPcChart=function(m){
+    if(!chart)return;
+    const W=520,H=190,pl=34,pr=38,pt=26,pb=30,list=(m||[]).slice(-10);
+    if(!list.length){
+      chart.innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico vazio: registre partidas para ver a evolução"><g fill="rgba(255,255,255,.05)">${[40,70,55,90,65,110,80].map((h,i)=>`<rect x="${pl+14+i*64}" y="${H-pb-h}" width="30" height="${h}" rx="5"/>`).join("")}</g><path d="M${pl} ${H-pb}H${W-pr}" stroke="rgba(255,255,255,.12)"/><text x="${W/2}" y="${H/2-4}" text-anchor="middle" class="pc-empty">Registre partidas para ver a evolução aqui</text></svg>`;
+      return;
+    }
+    const k=list.map(x=>+x.kills||0),d=list.map(x=>+x.damage||0),mk=Math.max(1,...k),md=Math.max(1,...d);
+    const n=list.length,step=(W-pl-pr)/n,bw=Math.min(34,step*.55),y=(v,mx)=>H-pb-(v/mx)*(H-pt-pb);
+    let g=`<text x="${pl}" y="14" class="lg"><tspan class="lk">■</tspan> Eliminações   <tspan class="ld">●</tspan> Dano</text>`;
+    g+=`<path d="M${pl} ${H-pb}H${W-pr}" stroke="rgba(255,255,255,.14)"/>`;
+    [.5,1].forEach(f=>{g+=`<path d="M${pl} ${y(f*mk,mk)}H${W-pr}" stroke="rgba(255,255,255,.05)" stroke-dasharray="3 5"/><text x="${pl-8}" y="${y(f*mk,mk)+4}" text-anchor="end" class="ax">${Math.round(f*mk)}</text><text x="${W-pr+8}" y="${y(f*md,md)+4}" class="ax ad">${Math.round(f*md)}</text>`});
+    list.forEach((x,i)=>{const cx=pl+step*i+step/2,yy=y(k[i],mk);
+      g+=`<rect x="${cx-bw/2}" y="${yy}" width="${bw}" height="${H-pb-yy}" rx="5" fill="url(#pcG)"><title>${k[i]} eliminações</title></rect><text x="${cx}" y="${H-pb+18}" text-anchor="middle" class="ax">${String(x.date||"").replace(/[^0-9-]/g,"").slice(8,10)}/${String(x.date||"").replace(/[^0-9-]/g,"").slice(5,7)}</text>`});
+    const pts=list.map((x,i)=>[pl+step*i+step/2,y(d[i],md)]);
+    g+=`<path d="${pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)).join("")}" fill="none" stroke="#ff3048" stroke-width="2"/>`;
+    g+=pts.map((p,i)=>`<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="#07090d" stroke="#ff3048" stroke-width="2"><title>${d[i]} de dano</title></circle>`).join("");
+    chart.innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Eliminações e dano das últimas ${n} partidas"><defs><linearGradient id="pcG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f2bd52"/><stop offset="1" stop-color="#f2bd52" stop-opacity=".25"/></linearGradient></defs>${g}</svg>`;
+  };
+  try{const d=JSON.parse(localStorage.getItem("tksPainelV1")||"null");window.tksPcChart(d&&d.matches)}catch(e){window.tksPcChart([])}
+
+  /* aviso do 3D: muda o texto conforme o tipo de tela */
+  const hint=document.getElementById("heroHint");
+  if(hint&&matchMedia("(hover:none)").matches)hint.textContent="Toque no medalhão ou arraste para girar";
+
+  /* fallback: se o 3D não carregar em 6 s, mostra a logo estática */
+  setTimeout(()=>{if(!window.__tks3d){const c=document.getElementById("heroGL");if(c)c.remove();const f=document.querySelector(".hero-stage .logo-fallback");if(f)f.hidden=false}},6000);
+})();
+
+/* ===== erros: mostrar todos ===== */
+(function(){
+  const b=document.getElementById("errMore"),l=document.getElementById("errList");if(!b||!l)return;
+  const n=l.querySelectorAll(".err").length;
+  b.addEventListener("click",()=>{const o=l.classList.toggle("open");b.setAttribute("aria-expanded",o);b.textContent=o?"Mostrar menos":`Ver todos os ${n} erros`;
+    if(!o)l.scrollIntoView({block:"start",behavior:"smooth"})});
+})();
+
+/* ===== capítulos como telas: home + um capítulo por vez ===== */
+(function(){
+  const content=document.querySelector(".content");if(!content)return;
+  const kids=[...content.children];let cur="home";const grp=new Map();
+  kids.forEach(el=>{
+    if(el.classList.contains("chapter"))cur="c"+el.id.split("-")[1];
+    if(el.classList.contains("cta")||el.tagName==="FOOTER")cur="all";
+    if(el.classList.contains("hero")||el.classList.contains("marquee"))cur="home";
+    const g=el.tagName==="DIALOG"?"all":cur;grp.set(el,g);el.dataset.pg=g;
+  });
+  const chs=[...content.querySelectorAll(".chapter")].map(h=>({n:h.id.split("-")[1],t:h.querySelector(".ch-title").textContent,d:h.querySelector(".ch-desc").textContent,c:h.querySelectorAll(".ch-index li").length}));
+  /* home: cartões dos capítulos e atalhos */
+  const home=document.createElement("section");home.className="home-ch";home.dataset.pg="home";home.id="capitulos";
+  /* imagens já presentes na página, reaproveitadas como miniaturas */
+  const q=sel=>{const e=document.querySelector(sel);return e?(e.getAttribute("src")||""):""};
+  let ars={};try{ars=JSON.parse(document.getElementById("arsData").textContent)}catch(e){}
+  const IMG={
+    arsenal:(ars.img||{}).m416||"",mapas:q('.has-map[data-map="erangel"] .map-img'),acess:(ars.aimg||{}).comp_ar||"",
+    cura:q('#cura .hr-img img[src*="medkit"]')||q('#cura .hr-img img'),equip:q('#equipamento .gear-card.lv3 img'),veic:q('#veiculos .veh-img img')
+  };
+  const ic=d=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const I={target:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3.5M12 18.5V22M2 12h3.5M18.5 12H22"/>',
+    sliders:'<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+    phone:'<rect x="2" y="6" width="20" height="12" rx="2.5"/><circle cx="7" cy="12" r="2"/><circle cx="17" cy="10" r="1.3"/><circle cx="19" cy="13" r="1.3"/>',
+    steps:'<path d="M9 3.5h6v3H9z"/><path d="M8 5H6.5A1.5 1.5 0 0 0 5 6.5v13A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 5H16"/><path d="m8.5 13.5 2.2 2.2 4.6-4.6"/>',
+    chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',cal:'<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+    x:'<path d="M6 6l12 12M18 6 6 18"/>',book:'<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/>',help:'<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17v.5"/>',
+    play:'<rect x="3" y="5" width="18" height="14" rx="3"/><path d="m10 9 5 3-5 3z"/>'};
+  const HL={
+    1:[["#comecar","Primeiros passos","Como usar o manual e evoluir mais rápido",null,I.steps],["#armas","Arsenal","18 armas com filtros e attachments recomendados",IMG.arsenal],["#mapas","Mapas interativos","Planeje queda e rota nos mapas oficiais",IMG.mapas]],
+    2:[["#diagnostico","Diagnóstico de mira","4 testes: reação, precisão, rastreamento e recuo",null,I.target,true],["#lab","Laboratório de sensibilidade","Monte uma base para testar no campo de treino",null,I.sliders,true],["#hudlab","Construtor de HUD","Posicione os botões e exporte o layout",null,I.phone,true]],
+    3:[["#cura","Cura e boost","Quanto cada item recupera e quando usar",IMG.cura],["#equipamento","Equipamento do jogador","Capacete, colete e mochila por nível",IMG.equip],["#veiculos","Guia de veículos","Qual veículo para cada situação",IMG.veic]],
+    4:[["#painel","Painel e diário","Registre treinos e partidas e veja a evolução",null,I.chart,true],["#plano","Plano semanal","Um foco de treino para cada dia",null,I.cal],["#erros","Erros comuns","16 erros e como corrigir",null,I.x]],
+    5:[["#glossario","Glossário","Termos das calls e dos treinos",null,I.book],["#faq","Perguntas frequentes","Respostas rápidas para as dúvidas comuns",null,I.help],["#videos","Vídeos","Demonstrações do conteúdo",null,I.play]]
+  };
+  const lede=n=>{const h=document.getElementById("cap-"+n);let e=h&&h.nextElementSibling,l=null;while(e&&!e.classList.contains("chapter")&&!l){l=e.querySelector(".lede");e=e.nextElementSibling}return l?l.textContent:""};
+  /* "seu treino de hoje": plano do dia, diagnóstico e progresso */
+  const days=[...document.querySelectorAll("#days .day")],today=days[(new Date().getDay()+6)%7];
+  const tdN=today?today.querySelector(".dn").textContent:"",tdT=today?today.querySelector("h4").textContent:"",tdP=today?today.querySelector("p").textContent:"";
+  let dg=null;try{const d=JSON.parse(localStorage.getItem("tksDiag")||"{}"),l=(d[matchMedia("(pointer:coarse)").matches?"touch":"mouse"]||[]).filter(e=>Object.keys(e.s).length===4).pop();if(l)dg=Math.round(Object.values(l.s).reduce((a,b)=>a+b,0)/4)}catch(e){}
+  const prog=(document.getElementById("progressPct")||{}).textContent||"0%";
+  home.innerHTML=`<div class="hm-today">
+      <a class="td-main" href="#plano"><small>Seu treino de hoje · ${tdN.toLowerCase()}</small><b>${tdT}</b><span>${tdP}</span></a>
+      <a class="td-box" href="#diagnostico"><small>Diagnóstico de mira</small><b>${dg!==null?dg:"—"}</b><span>${dg!==null?"última nota geral":"faça o primeiro teste"}</span></a>
+      <a class="td-box" href="#modulos"><small>Trilha de formação</small><b id="tdProg">${prog}</b><span>das lições concluídas</span></a>
+    </div>
+    <h2>Capítulos</h2><p class="hc-sub">Veja o essencial de cada um e abra o capítulo completo quando quiser se aprofundar.</p>
+    <div class="chx">${chs.map((c,i)=>`<article class="chx-row${i===0?" first":""}">
+      <div class="chx-head"><span class="hc-n">${String(c.n).padStart(2,"0")}</span><div><b>${c.t}</b><p>${c.d}</p>${lede(c.n)?`<q>${lede(c.n)}</q>`:""}
+        <a class="btn ${i===0?"":"btn-ghost "}chx-open" href="#cap-${c.n}">Abrir capítulo completo <span class="chx-cnt">${c.c} seções</span></a></div></div>
+      <ul class="chx-hl">${(HL[c.n]||[]).map(([h,t,d,img,icon,tool])=>`<li><a href="${h}"><span class="chx-img">${img?`<img src="${img}" alt="" loading="lazy">`:ic(icon)}</span><span class="chx-tx"><b>${t}</b>${tool?'<em>Ferramenta</em>':""}<small>${d}</small></span><i aria-hidden="true">→</i></a></li>`).join("")}</ul>
+    </article>`).join("")}</div>`;
+  const mq=content.querySelector(".marquee");(mq||content.querySelector(".hero")).after(home);
+  /* barra fixa dentro dos capítulos: voltar e trocar de capítulo */
+  const bar=document.createElement("nav");bar.className="ch-bar";bar.setAttribute("aria-label","Capítulos");bar.hidden=true;
+  bar.innerHTML=`<a class="chb-back" href="#capitulos">← Capítulos</a><div class="chb-tabs">${chs.map(c=>`<a href="#cap-${c.n}" data-c="${c.n}"><span>${c.n}</span>${c.t}</a>`).join("")}</div>`;
+  content.prepend(bar);bar.dataset.pg="all";
+  /* paginação entre capítulos */
+  chs.forEach((c,i)=>{
+    const last=[...content.children].filter(e=>e.dataset.pg==="c"+c.n&&e.tagName!=="DIALOG").pop();if(!last)return;
+    const p=chs[i-1],n=chs[i+1],nav=document.createElement("nav");nav.className="ch-pager";nav.dataset.pg="c"+c.n;nav.setAttribute("aria-label","Navegar entre capítulos");
+    nav.innerHTML=(p?`<a class="prev" href="#cap-${p.n}"><small>← Capítulo ${p.n}</small><b>${p.t}</b></a>`:`<a class="prev" href="#capitulos"><small>← Voltar</small><b>Todos os capítulos</b></a>`)+
+      (n?`<a class="next" href="#cap-${n.n}"><small>Capítulo ${n.n} →</small><b>${n.t}</b></a>`:"");
+    last.after(nav);
+  });
+  document.body.classList.add("paged");
+  const all=()=>[...content.children];
+  function show(pg){all().forEach(e=>e.classList.toggle("pg-off",!(e.dataset.pg===pg||e.dataset.pg==="all")));
+    bar.hidden=pg==="home";bar.querySelectorAll(".chb-tabs a").forEach(a=>{const on="c"+a.dataset.c===pg;a.classList.toggle("on",on);if(on)a.setAttribute("aria-current","page");else a.removeAttribute("aria-current")});
+    const tp=document.getElementById("tdProg"),pp=document.getElementById("progressPct");if(tp&&pp)tp.textContent=pp.textContent}
+  function pgOf(el){let e=el;while(e&&e.parentElement!==content)e=e.parentElement;return e?e.dataset.pg:"home"}
+  let shown=null;
+  const curHash=()=>{try{return decodeURIComponent(location.hash.slice(1))}catch(e){return ""}};
+  function go(id,scroll){
+    const el=id&&document.getElementById(id);
+    const pg=el&&content.contains(el)?pgOf(el):"home";
+    const changed=pg!==shown;if(changed){show(pg);shown=pg}
+    if(!scroll)return;
+    requestAnimationFrame(()=>{
+      if(!el||id==="inicio"){window.scrollTo({top:0,behavior:changed?"instant":"smooth"});return}
+      orig.call(el,{behavior:changed?"instant":"smooth",block:"start"});
+    });
+  }
+  /* atualiza o endereço sem navegar; em visualizadores restritos isso pode falhar, e tudo bem */
+  const setHash=id=>{try{history.pushState(null,"","#"+id)}catch(e){}};
+  addEventListener("hashchange",()=>go(curHash(),true));
+  addEventListener("popstate",()=>go(curHash(),true));
+  /* todo link interno é tratado aqui: nunca deixa o navegador recarregar a página */
+  document.addEventListener("click",e=>{
+    const a=e.target.closest('a[href^="#"]');if(!a||e.defaultPrevented||a.hasAttribute("data-actab"))return;
+    const id=a.getAttribute("href").slice(1);if(!id)return;
+    e.preventDefault();go(id,true);setHash(id);
+  });
+  /* elementos abertos por script (ex.: scrollIntoView em capítulo oculto) */
+  const orig=Element.prototype.scrollIntoView;
+  Element.prototype.scrollIntoView=function(o){if(content.contains(this)&&this.closest(".pg-off")){const pg=pgOf(this);show(pg);shown=pg}return orig.call(this,o)};
+  go(curHash(),!!curHash());
+})();
+
+/* ===== ciclo de ajuste: interativo, avança sozinho até a pessoa tocar ===== */
+(function(){
+  const card=document.querySelector(".tvc-ciclo");if(!card)return;
+  const nodes=[...card.querySelectorAll(".cy-node")],T=document.getElementById("cyT"),N=document.getElementById("cyN"),D=document.getElementById("cyD");
+  const S=[0,1,2,3].map(i=>(card.dataset["s"+i]||"|").split("|"));
+  let i=0,auto=!matchMedia("(prefers-reduced-motion: reduce)").matches,timer=null;
+  function set(k){i=k;nodes.forEach((n,j)=>n.classList.toggle("on",j===k));T.textContent=S[k][0];N.textContent=`passo ${k+1} de 4`;D.innerHTML=`<b>${k+1} · ${S[k][0]}:</b> ${S[k][1]}`}
+  function loop(){clearInterval(timer);if(auto)timer=setInterval(()=>{if(!document.hidden)set((i+1)%4)},2600)}
+  nodes.forEach((n,k)=>{const go=()=>{auto=false;clearInterval(timer);set(k)};n.addEventListener("click",go);n.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();go()}})});
+  set(0);loop();
+})();
+
+/* ===== TKS ACADEMY · arsenal com filtros ===== */
+(function(){
+  const root=document.getElementById("arsenal"),src=document.getElementById("arsData");
+  if(!root||!src)return;
+  let D;try{D=JSON.parse(src.textContent)}catch(e){return}
+  const list=document.getElementById("arsList"),det=document.getElementById("arsDetail");
+  const SLOTS=["Boca","Empunhadura","Carregador","Coronha","Mira"],RG=["Curta","Média","Longa"];
+  const KEY="tksArsenal";
+  let st={cat:"all",rg:-1,am:"all",sel:"m416"};
+  try{Object.assign(st,JSON.parse(localStorage.getItem(KEY)||"{}"))}catch(e){}
+  const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const visible=()=>D.w.filter(w=>(st.cat==="all"||w.c===st.cat)&&(st.rg<0||w.g[st.rg]>=1)&&(st.am==="all"||w.am===st.am))
+    .sort((a,b)=>st.rg<0?0:(b.g[st.rg]-a.g[st.rg]));
+  const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}};
+  const rangeBar=g=>`<div class="range-bar">${RG.map((t,i)=>`<span class="${g[i]===2?"on2":g[i]===1?"on1":""}">${t}</span>`).join("")}</div>`;
+
+  function renderList(){
+    const v=visible();
+    if(!v.find(w=>w.k===st.sel)&&v.length)st.sel=v[0].k;
+    list.innerHTML=v.length?v.map(w=>`<button type="button" class="ars-tile${w.k===st.sel?" on":""}" role="option" aria-selected="${w.k===st.sel}" data-k="${w.k}">
+      <span class="at-img"><img src="${D.img[w.k]}" alt="" loading="lazy" decoding="async"></span>
+      <span class="at-txt"><b>${esc(w.n)}</b><small><img class="at-ammo" src="${D.ammo[w.am][1]}" alt="" loading="lazy">${D.cat[w.c][1]} · ${w.a}</small></span>
+      ${st.rg>=0&&w.g[st.rg]===2?'<em class="at-ideal">Ideal</em>':""}</button>`).join("")
+      :'<p class="muted ars-empty">Nenhuma arma nessa combinação de filtros.</p>';
+    root.querySelectorAll(".af").forEach(b=>{const on=b.dataset.cat===st.cat;b.classList.toggle("on",on);b.setAttribute("aria-pressed",on)});
+    root.querySelectorAll(".ar").forEach(b=>{const on=+b.dataset.rg===st.rg;b.classList.toggle("on",on);b.setAttribute("aria-pressed",on)});
+    root.querySelectorAll(".am").forEach(b=>{const on=b.dataset.am===st.am;b.classList.toggle("on",on);b.setAttribute("aria-pressed",on)});
+    renderDetail();
+  }
+  function slot(i,s){
+    if(!s)return `<li class="slot off"><small>${SLOTS[i]}</small><span class="sl-img"></span><b>Não aceita</b></li>`;
+    const [m,...alt]=s;
+    const fam=m.replace(/_(ar|smg|sr)$/,"").replace(/^eq$/,"eq");const id=i===4?m:fam;
+    return `<li class="slot"><small>${SLOTS[i]}</small><span class="sl-img"><img src="${D.aimg[m]}" alt="" loading="lazy"></span><b>${esc(D.at[m])}</b>${alt.length?`<em>ou ${alt.map(a=>esc(D.at[a])).join(" · ")}</em>`:""}<a class="sl-more" href="#ac-${id}" data-actab="${i}" data-acitem="ac-${id}">Ver no guia</a></li>`;
+  }
+  function renderDetail(){
+    const w=D.w.find(x=>x.k===st.sel);
+    if(!w){det.innerHTML="";return}
+    const v=visible(),i=v.findIndex(x=>x.k===w.k),same=D.w.filter(x=>x.am===w.am&&x.k!==w.k);
+    det.innerHTML=`<div class="ad-stage" data-cat="${D.cat[w.c][1]}">
+        <img src="${D.img[w.k]}" alt="${esc(w.n)}">
+        ${v.length>1?`<button type="button" class="ad-nav prev" data-step="-1" aria-label="Arma anterior">‹</button><button type="button" class="ad-nav next" data-step="1" aria-label="Próxima arma">›</button>`:""}
+        <span class="ad-count">${i+1} / ${v.length}</span>
+      </div>
+      <div class="ad-body">
+        <div class="ad-head"><div><p class="ad-rank">Nº ${String(w.r).padStart(2,"0")} em ${D.cat[w.c][0]}</p><h4>${esc(w.n)}</h4></div><span class="ad-ammo" title="Munição"><img src="${D.ammo[w.am][1]}" alt="">${w.a}</span></div>
+        <div class="ad-row">
+          <div class="wcond"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg><div><small>Melhor condição</small><p>${esc(w.cd)}</p></div></div>
+          <div class="range ad-range"><small>Alcance ideal</small>${rangeBar(w.g)}</div>
+        </div>
+        ${w.t?`<p class="ad-tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.4 1 1.1 1 1.8V16h5v-.3c0-.7.4-1.4 1-1.8A6 6 0 0 0 12 3z"/></svg>${esc(w.t)}</p>`:""}
+        ${same.length?`<div class="ad-same"><small>Usa a mesma munição</small><div>${same.map(x=>`<button type="button" class="ad-mate" data-k="${x.k}">${esc(x.n)}</button>`).join("")}</div></div>`:""}
+        <h5>Attachments recomendados</h5>
+        <ul class="slots">${w.s.map((s,i)=>slot(i,s)).join("")}</ul>
+      </div>`;
+  }
+  root.addEventListener("click",e=>{
+    const am=e.target.closest(".am");if(am){st.am=am.dataset.am;renderList();save();return}
+    const mate=e.target.closest(".ad-mate");if(mate){st.sel=mate.dataset.k;if(!visible().find(x=>x.k===st.sel)){st.cat="all";st.rg=-1;st.am="all"}renderList();save();const tl=list.querySelector(`[data-k="${st.sel}"]`);if(tl)tl.scrollIntoView({block:"nearest",inline:"nearest"});return}
+    const f=e.target.closest(".af"),r=e.target.closest(".ar"),t=e.target.closest(".ars-tile"),n=e.target.closest(".ad-nav");
+    if(f){st.cat=f.dataset.cat;renderList();save();return}
+    if(r){st.rg=+r.dataset.rg;renderList();save();return}
+    if(t){st.sel=t.dataset.k;list.querySelectorAll(".ars-tile").forEach(x=>{const on=x===t;x.classList.toggle("on",on);x.setAttribute("aria-selected",on)});renderDetail();save();
+      if(matchMedia("(max-width:800px)").matches)det.scrollIntoView({behavior:"smooth",block:"nearest"});return}
+    if(n){const v=visible(),i=v.findIndex(x=>x.k===st.sel),j=(i+(+n.dataset.step)+v.length)%v.length;st.sel=v[j].k;
+      list.querySelectorAll(".ars-tile").forEach(x=>{const on=x.dataset.k===st.sel;x.classList.toggle("on",on);x.setAttribute("aria-selected",on);if(on)x.scrollIntoView({block:"nearest",inline:"nearest"})});renderDetail();save()}
+  });
+  list.addEventListener("keydown",e=>{
+    if(!["ArrowDown","ArrowUp","ArrowLeft","ArrowRight"].includes(e.key))return;
+    const ts=[...list.querySelectorAll(".ars-tile")],i=ts.indexOf(document.activeElement);if(i<0)return;
+    e.preventDefault();const j=(i+(e.key==="ArrowDown"||e.key==="ArrowRight"?1:-1)+ts.length)%ts.length;ts[j].focus();ts[j].click();
+  });
+  renderList();
+})();
+
+/* ===== guia de acessórios: abas + ligação com o arsenal ===== */
+(function(){
+  const box=document.getElementById("acTabs");if(!box)return;
+  const tabs=[...box.querySelectorAll('[role="tab"]')];
+  function open(i,focus){
+    tabs.forEach((t,j)=>{const on=j===i;t.classList.toggle("active",on);t.setAttribute("aria-selected",on);t.tabIndex=on?0:-1;
+      document.getElementById(t.getAttribute("aria-controls")).hidden=!on});
+    if(focus)tabs[i].focus();
+  }
+  tabs.forEach((t,i)=>t.addEventListener("click",()=>open(i)));
+  box.addEventListener("keydown",e=>{const i=tabs.indexOf(document.activeElement);if(i<0)return;
+    if(e.key==="ArrowRight"){e.preventDefault();open((i+1)%tabs.length,true)}
+    if(e.key==="ArrowLeft"){e.preventDefault();open((i-1+tabs.length)%tabs.length,true)}});
+  /* "Ver no guia" a partir de um encaixe do arsenal */
+  document.addEventListener("click",e=>{
+    const a=e.target.closest("[data-actab]");if(!a)return;e.preventDefault();
+    open(+a.dataset.actab);
+    const t=document.getElementById(a.dataset.acitem)||document.getElementById("acessorios");
+    t.scrollIntoView({behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth",block:"center"});
+    t.classList.remove("flash");void t.offsetWidth;t.classList.add("flash");
+  });
+})();
+
+/* ===== guia de veículos: filtro por situação ===== */
+(function(){
+  const g=document.getElementById("vehGrid");if(!g)return;
+  const bs=[...document.querySelectorAll(".vf")],cs=[...g.querySelectorAll(".veh")];
+  bs.forEach(b=>b.addEventListener("click",()=>{
+    const t=b.dataset.tag;
+    bs.forEach(x=>{const on=x===b;x.classList.toggle("on",on);x.setAttribute("aria-pressed",on)});
+    cs.forEach(c=>{c.hidden=t!=="all"&&!c.dataset.tags.split(" ").includes(t)});
+  }));
+})();
+
+/* ===== TKS ACADEMY · visualizador de mapas com planejador de rota ===== */
+(function(){
+  const dlg=document.getElementById("mapDlg"),dataEl=document.getElementById("mapData");
+  if(!dlg||!dataEl)return;
+  let MAPS;try{MAPS=JSON.parse(dataEl.textContent)}catch(e){return}
+  const $=id=>document.getElementById(id);
+  const view=$("mvView"),stage=$("mvStage"),img=$("mvImg"),svg=$("mvSvg"),load=$("mvLoad"),hint=$("mvHint");
+  const names=$("mvNames"),namesWrap=$("mvNamesWrap"),distEl=$("mvDist");
+  const KEY="tksMapPlans";
+  let plans={};try{plans=JSON.parse(localStorage.getItem(KEY)||"{}")||{}}catch(e){}
+  const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(plans))}catch(e){}};
+  let cur=null,tool="move",S=0,z=1,tx=0,ty=0,hist=[],lastFocus=null;
+  const plan=()=>plans[cur]||(plans[cur]={d:null,r:[],a:[]});
+
+  /* ---------- geometria ---------- */
+  function fit(){
+    const r=view.getBoundingClientRect();S=Math.min(r.width,r.height);
+    stage.style.width=stage.style.height=S+"px";z=1;tx=(r.width-S)/2;ty=(r.height-S)/2;apply();
+  }
+  function clamp(){
+    const r=view.getBoundingClientRect(),w=S*z;
+    tx=w<=r.width?(r.width-w)/2:Math.min(0,Math.max(r.width-w,tx));
+    ty=w<=r.height?(r.height-w)/2:Math.min(0,Math.max(r.height-w,ty));
+  }
+  function apply(){clamp();stage.style.transform=`translate(${tx}px,${ty}px) scale(${z})`;draw()}
+  function zoomAt(f,cx,cy){
+    const r=view.getBoundingClientRect(),nz=Math.min(8,Math.max(1,z*f));if(nz===z)return;
+    const px=cx-r.left,py=cy-r.top;tx=px-(px-tx)*nz/z;ty=py-(py-ty)*nz/z;z=nz;apply();
+    if(hint)hint.classList.add("gone");
+  }
+  const toMap=(cx,cy)=>{const r=view.getBoundingClientRect();return[(cx-r.left-tx)/(S*z),(cy-r.top-ty)/(S*z)]};
+
+  /* ---------- desenho ---------- */
+  const K=1000,f=v=>(v*K).toFixed(1);
+  function km(){
+    const p=plan(),pts=(p.d?[p.d]:[]).concat(p.r);let d=0;
+    for(let i=1;i<pts.length;i++)d+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);
+    return d*MAPS[cur].km;
+  }
+  function draw(){
+    if(!cur)return;const p=plan(),s=1/z,pts=(p.d?[p.d]:[]).concat(p.r);let h="";
+    if(pts.length>1)h+=`<polyline points="${pts.map(q=>f(q[0])+","+f(q[1])).join(" ")}" class="mv-route"/>`;
+    p.r.forEach((q,i)=>{h+=`<g transform="translate(${f(q[0])} ${f(q[1])}) scale(${s})"><circle r="9" class="mv-rp"/><text y="4" class="mv-rn">${i+1}</text></g>`});
+    p.a.forEach(q=>{h+=`<g transform="translate(${f(q[0])} ${f(q[1])}) scale(${s})" class="mv-al"><path d="M0-13 12 9H-12Z"/><path d="M0-4v6M0 5.5v.5" class="mv-alx"/></g>`});
+    if(p.d)h+=`<g transform="translate(${f(p.d[0])} ${f(p.d[1])}) scale(${s})" class="mv-drop"><path d="M0 0c-7-9-12-14-12-21a12 12 0 1 1 24 0c0 7-5 12-12 21z"/><circle cy="-21" r="4.5"/></g>`;
+    svg.innerHTML=h;
+    const d=km();distEl.textContent="Rota: "+(d<1?Math.round(d*1000)+" m":d.toFixed(1).replace(".",",")+" km");
+  }
+
+  /* ---------- ferramentas ---------- */
+  function setTool(t){tool=t;dlg.querySelectorAll(".mv-tool").forEach(b=>{const on=b.dataset.tool===t;b.classList.toggle("on",on);b.setAttribute("aria-pressed",on)});view.dataset.tool=t}
+  dlg.querySelectorAll(".mv-tool").forEach(b=>b.addEventListener("click",()=>setTool(b.dataset.tool)));
+  function addAt(cx,cy){
+    const q=toMap(cx,cy);if(q[0]<0||q[0]>1||q[1]<0||q[1]>1)return;
+    q[0]=+q[0].toFixed(4);q[1]=+q[1].toFixed(4);const p=plan();
+    if(tool==="drop"){hist.push({t:"d",prev:p.d});p.d=q}
+    else if(tool==="route"){p.r.push(q);hist.push({t:"r"})}
+    else if(tool==="alert"){p.a.push(q);hist.push({t:"a"})}
+    else return;
+    save();draw();
+  }
+  $("mvUndo").addEventListener("click",()=>{const h=hist.pop(),p=plan();
+    if(!h){if(p.r.length)p.r.pop();else if(p.a.length)p.a.pop();else p.d=null}
+    else if(h.t==="d")p.d=h.prev;else if(h.t==="r")p.r.pop();else p.a.pop();
+    save();draw()});
+  const clr=$("mvClear");
+  clr.addEventListener("click",()=>{
+    if(clr.dataset.armed){plans[cur]={d:null,r:[],a:[]};hist=[];save();draw();delete clr.dataset.armed;clr.textContent="Limpar";return}
+    clr.dataset.armed="1";clr.textContent="Confirmar limpar";setTimeout(()=>{delete clr.dataset.armed;clr.textContent="Limpar"},3000)});
+
+  /* ---------- gestos ---------- */
+  const ptrs=new Map();let start=null,pinch=null;
+  view.addEventListener("pointerdown",e=>{
+    if(e.target.closest(".mv-zoom"))return;
+    view.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(ptrs.size===1)start={x:e.clientX,y:e.clientY,tx,ty,moved:false};
+    if(ptrs.size===2){const [a,b]=[...ptrs.values()];pinch={d:Math.hypot(a.x-b.x,a.y-b.y),z};if(start)start.moved=true}
+  });
+  view.addEventListener("pointermove",e=>{
+    if(!ptrs.has(e.pointerId))return;ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(ptrs.size===2&&pinch){const [a,b]=[...ptrs.values()],d=Math.hypot(a.x-b.x,a.y-b.y);zoomAt(pinch.z*d/pinch.d/z,(a.x+b.x)/2,(a.y+b.y)/2);return}
+    if(start){const dx=e.clientX-start.x,dy=e.clientY-start.y;if(Math.abs(dx)+Math.abs(dy)>6)start.moved=true;
+      if(start.moved){tx=start.tx+dx;ty=start.ty+dy;apply();view.classList.add("dragging");if(hint)hint.classList.add("gone")}}
+  });
+  const up=e=>{
+    if(!ptrs.has(e.pointerId))return;ptrs.delete(e.pointerId);
+    if(ptrs.size<2)pinch=null;
+    if(ptrs.size===0){if(start&&!start.moved&&e.type==="pointerup")addAt(e.clientX,e.clientY);start=null;view.classList.remove("dragging")}
+  };
+  view.addEventListener("pointerup",up);view.addEventListener("pointercancel",up);
+  view.addEventListener("wheel",e=>{e.preventDefault();zoomAt(Math.exp(-e.deltaY*.0018),e.clientX,e.clientY)},{passive:false});
+  const zc=f=>{const r=view.getBoundingClientRect();zoomAt(f,r.left+r.width/2,r.top+r.height/2)};
+  $("mvIn").addEventListener("click",()=>zc(1.5));$("mvOut").addEventListener("click",()=>zc(1/1.5));$("mvFit").addEventListener("click",fit);
+  dlg.addEventListener("keydown",e=>{if(e.target.tagName==="INPUT")return;if(e.key==="+"||e.key==="=")zc(1.4);if(e.key==="-")zc(1/1.4);if(e.key==="0")fit()});
+
+  /* ---------- abrir / fechar ---------- */
+  function setImg(){
+    const m=MAPS[cur],src=(names.checked||!m.nt)?m.tx:m.nt;
+    if(img.getAttribute("src")===src)return;
+    load.hidden=false;img.style.opacity=0;
+    img.onload=()=>{load.hidden=true;img.style.opacity=1};
+    img.onerror=()=>{load.hidden=false;load.textContent="Não foi possível carregar o mapa."};
+    img.src=src;
+  }
+  names.addEventListener("change",setImg);
+  function open(k){
+    if(!MAPS[k])return;cur=k;hist=[];lastFocus=document.activeElement;
+    $("mvTitle").textContent=MAPS[k].n;$("mvSub").textContent=MAPS[k].km+" × "+MAPS[k].km+" km";
+    namesWrap.hidden=!MAPS[k].nt;img.alt="Mapa de "+MAPS[k].n;
+    if(typeof dlg.showModal==="function")dlg.showModal();else dlg.setAttribute("open","");
+    document.documentElement.classList.add("mv-lock");setTool("move");
+    requestAnimationFrame(()=>{fit();setImg()});
+  }
+  function close(){if(dlg.open&&dlg.close)dlg.close();else dlg.removeAttribute("open")}
+  dlg.addEventListener("close",()=>{document.documentElement.classList.remove("mv-lock");if(lastFocus)lastFocus.focus()});
+  $("mvClose").addEventListener("click",close);
+  addEventListener("resize",()=>{if(dlg.open)fit()});
+  document.addEventListener("click",e=>{
+    const b=e.target.closest(".map-open,.has-map .mh");if(!b)return;
+    const card=b.closest(".has-map");if(card)open(card.dataset.map);
+  });
+})();
+
+/* ===== TKS ACADEMY · Diagnóstico de mira (minigame) ===== */
+(function(){
+  const root=document.getElementById("diagnostico");if(!root)return;
+  const KEY="tksDiag",DEV=matchMedia("(pointer:coarse)").matches?"touch":"mouse";
+  const T=DEV==="touch";
+  let db={};try{db=JSON.parse(localStorage.getItem(KEY)||"{}")||{}}catch(e){}
+  const saveDb=()=>{try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){}};
+  const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
+  const lin=(v,worst,best)=>Math.round(100*clamp((v-worst)/(best-worst)));
+  const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const SK=[
+    {k:"reacao",n:"Reação",u:"Tempo de reação"},
+    {k:"precisao",n:"Precisão",u:"Acertos e velocidade"},
+    {k:"rastreio",n:"Rastreamento",u:"Tempo no alvo",sn:"Rastreio"},
+    {k:"recuo",n:"Controle de recuo",u:"Desvio da mira",sn:"Recuo"}
+  ];
+  const REC={
+    reacao:["Treine a reação","Aqueça antes de jogar e faça duelos curtos em MDM, com a mira já posicionada onde o inimigo vai aparecer.","#mdm","Ver MDM e prática"],
+    precisao:["Treine a precisão","No campo de treino, troque de alvo em várias distâncias. Se a mira passa do alvo, reveja a sensibilidade de câmera e ADS.","#sensibilidade","Ver sensibilidades TKS"],
+    rastreio:["Treine o rastreamento","Siga alvos em movimento: use o dia de spray lateral do plano semanal e o exercício de movimento lateral.","#plano","Ver plano semanal"],
+    recuo:["Treine o controle de recuo","Comece com rajadas curtas e aumente aos poucos. O simulador de spray mostra o efeito da compensação.","#recoil","Ver recuo e spray"]
+  };
+
+  /* ---------- arena (tela cheia) ---------- */
+  const ov=document.createElement("div");ov.className="dg-arena";ov.hidden=true;ov.setAttribute("role","dialog");ov.setAttribute("aria-modal","true");ov.setAttribute("aria-label","Diagnóstico de mira");
+  ov.innerHTML=`<canvas></canvas><div class="dg-hud"><b class="dg-title"></b><span class="dg-prog"></span><button type="button" class="dg-x" aria-label="Sair do diagnóstico">×</button></div><div class="dg-screen" hidden></div>`;
+  document.body.appendChild(ov);
+  const cv=ov.querySelector("canvas"),cx=cv.getContext("2d"),hudT=ov.querySelector(".dg-title"),hudP=ov.querySelector(".dg-prog"),scr=ov.querySelector(".dg-screen");
+  let W=0,H=0,M=0,dpr=1,abort=false,P={x:-999,y:-999,down:false},onDown=null,onUp=null;
+  function size(){dpr=Math.min(2,devicePixelRatio||1);W=ov.clientWidth;H=ov.clientHeight;M=Math.min(W,H);cv.width=W*dpr;cv.height=H*dpr;cx.setTransform(dpr,0,0,dpr,0,0)}
+  addEventListener("resize",()=>{if(!ov.hidden)size()});
+  const pos=e=>{const r=cv.getBoundingClientRect();P.x=e.clientX-r.left;P.y=e.clientY-r.top};
+  cv.addEventListener("pointerdown",e=>{e.preventDefault();try{cv.setPointerCapture(e.pointerId)}catch(_){}pos(e);P.down=true;if(onDown)onDown(e)});
+  cv.addEventListener("pointermove",e=>{pos(e)});
+  const up=e=>{pos(e);P.down=false;if(onUp)onUp(e);if(T){P.x=P.y=-999}};
+  cv.addEventListener("pointerup",up);cv.addEventListener("pointercancel",up);
+  cv.addEventListener("pointerleave",()=>{if(!P.down&&!T){P.x=P.y=-999}});
+  const DBG={};
+  class Abort extends Error{}
+  const chk=()=>{if(abort)throw new Abort()};
+  const frame=()=>new Promise(r=>requestAnimationFrame(r)).then(t=>{chk();return t});
+  async function wait(ms){const t0=performance.now();while(performance.now()-t0<ms)await frame()}
+  function bg(){cx.fillStyle="#07090d";cx.fillRect(0,0,W,H);cx.strokeStyle="rgba(255,255,255,.035)";cx.lineWidth=1;const g=Math.max(40,M/10);
+    cx.beginPath();for(let x=g;x<W;x+=g){cx.moveTo(x,0);cx.lineTo(x,H)}for(let y=g;y<H;y+=g){cx.moveTo(0,y);cx.lineTo(W,y)}cx.stroke()}
+  function text(s,y,size=22,col="#f4f5f7",font="Barlow Condensed"){cx.fillStyle=col;cx.font=`700 ${size}px "${font}",sans-serif`;cx.textAlign="center";cx.textBaseline="middle";cx.fillText(s,W/2,y)}
+  function target(x,y,r,on){
+    cx.save();cx.translate(x,y);
+    const g=cx.createRadialGradient(0,0,0,0,0,r*1.8);g.addColorStop(0,on?"rgba(101,223,154,.35)":"rgba(255,48,72,.35)");g.addColorStop(1,"rgba(0,0,0,0)");cx.fillStyle=g;cx.beginPath();cx.arc(0,0,r*1.8,0,7);cx.fill();
+    cx.lineWidth=2.5;cx.strokeStyle=on?"#65df9a":"#ff3048";cx.beginPath();cx.arc(0,0,r,0,7);cx.stroke();
+    cx.fillStyle=on?"#65df9a":"#f2bd52";cx.beginPath();cx.arc(0,0,r*.38,0,7);cx.fill();
+    cx.restore();
+  }
+  function cross(x,y,s,col="#f4f5f7"){cx.strokeStyle=col;cx.lineWidth=2;cx.beginPath();cx.moveTo(x-s,y);cx.lineTo(x-s*.35,y);cx.moveTo(x+s*.35,y);cx.lineTo(x+s,y);cx.moveTo(x,y-s);cx.lineTo(x,y-s*.35);cx.moveTo(x,y+s*.35);cx.lineTo(x,y+s);cx.stroke()}
+  let curRej=null;
+  function screen(html){return new Promise((res,rej)=>{scr.innerHTML=html;scr.hidden=false;curRej=rej;
+    scr.querySelectorAll("[data-go]").forEach(x=>x.onclick=()=>{curRej=null;scr.hidden=true;res(x.dataset.go)});
+    const b=scr.querySelector("[data-go]");if(b)b.focus()})}
+  async function countdown(){for(let i=3;i>0;i--){const t0=performance.now();while(performance.now()-t0<600){await frame();bg();text(String(i),H/2,Math.round(M*.22),"#f2bd52")}}}
+  function open(){abort=false;ov.hidden=false;document.documentElement.classList.add("dg-lock");size();bg();
+    if(T&&ov.requestFullscreen)ov.requestFullscreen().catch(()=>{})}
+  function close(){abort=true;onDown=onUp=null;ov.hidden=true;scr.hidden=true;if(curRej){const r=curRej;curRej=null;r(new Abort())}document.documentElement.classList.remove("dg-lock");
+    if(document.fullscreenElement)document.exitFullscreen().catch(()=>{})}
+  ov.querySelector(".dg-x").addEventListener("click",close);
+  addEventListener("keydown",e=>{if(e.key==="Escape"&&!ov.hidden)close()});
+
+  /* ---------- 1. reação ---------- */
+  async function tReaction(){
+    const N=5,times=[];let fouls=0;
+    while(times.length<N){
+      hudP.textContent=`${times.length+1} de ${N}`;
+      let state="wait",t0=0,res=null;
+      const delay=1100+Math.random()*2400,start=performance.now();
+      const tx=W*(.3+Math.random()*.4),ty=H*(.35+Math.random()*.35),r=Math.max(T?40:34,M*.08);
+      onDown=()=>{if(state==="wait"){res="foul"}else if(state==="go"){res=performance.now()-t0}};
+      while(res===null){await frame();bg();
+        if(state==="wait"){text("Aguarde o alvo…",H/2,Math.round(M*.06),"#a8b0bd");if(performance.now()-start>delay){state="go";t0=performance.now()}}
+        if(state==="go")target(tx,ty,r,false);
+        DBG.t="reacao";DBG.state=state;DBG.x=tx;DBG.y=ty;
+      }
+      onDown=null;
+      if(res==="foul"){fouls++;const f0=performance.now();while(performance.now()-f0<900){await frame();bg();text("Cedo demais",H/2,Math.round(M*.08),"#ff3048");text("Espere o alvo aparecer",H/2+M*.08,Math.round(M*.035),"#a8b0bd","Barlow")}continue}
+      times.push(res);const f0=performance.now();
+      while(performance.now()-f0<700){await frame();bg();text(Math.round(res)+" ms",H/2,Math.round(M*.1),"#65df9a")}
+    }
+    const s=[...times].sort((a,b)=>a-b),med=s[Math.floor(s.length/2)];
+    const score=Math.max(0,lin(med,T?520:470,T?230:190)-fouls*4);
+    return{score,raw:Math.round(med)+" ms"+(fouls?` · ${fouls} ${fouls>1?"antecipações":"antecipação"}`:""),v:Math.round(med)};
+  }
+  /* ---------- 2. precisão ---------- */
+  async function tFlick(){
+    const N=15,LIFE=1700,hits=[];let miss=0;
+    const r=Math.max(T?20:13,M*(T?.045:.026)),top=70;
+    for(let i=0;i<N;i++){
+      hudP.textContent=`${i+1} de ${N}`;
+      const x=r*2+Math.random()*(W-r*4),y=top+r*2+Math.random()*(H-top-r*4),t0=performance.now();let out=null;
+      onDown=()=>{const d=Math.hypot(P.x-x,P.y-y);out=d<=r*1.2?"hit":"miss"};
+      DBG.t="precisao";DBG.i=i;DBG.x=x;DBG.y=y;
+      while(out===null){const t=await frame();const age=performance.now()-t0;if(age>LIFE){out="late";break}
+        bg();target(x,y,r,false);cx.strokeStyle="rgba(242,189,82,.7)";cx.lineWidth=3;cx.beginPath();cx.arc(x,y,r+7,-Math.PI/2,-Math.PI/2+Math.PI*2*(1-age/LIFE));cx.stroke()}
+      onDown=null;
+      if(out==="hit")hits.push(performance.now()-t0);else miss++;
+      const f0=performance.now();while(performance.now()-f0<140){await frame();bg();if(out==="hit")target(x,y,r,true);else{cx.strokeStyle="#ff3048";cx.lineWidth=3;cross(x,y,r)}}
+    }
+    const acc=hits.length/N,avg=hits.length?hits.reduce((a,b)=>a+b,0)/hits.length:LIFE;
+    const speed=clamp((1150-avg)/(1150-(T?430:380)));
+    const score=Math.round(100*(.6*acc+.4*speed*(hits.length?1:0)));
+    return{score,raw:`${hits.length}/${N} acertos · ${Math.round(avg)} ms`,v:Math.round(acc*100)};
+  }
+  /* ---------- 3. rastreamento ---------- */
+  async function tTrack(){
+    const DUR=12000,r=Math.max(T?28:20,M*(T?.055:.034)),cxm=W/2,cym=H/2+20,ax=W*.36,ay=(H-90)*.36;
+    const ph=[Math.random()*6,Math.random()*6,Math.random()*6,Math.random()*6];
+    hudP.textContent=T?"Mantenha o dedo no alvo":"Mantenha o cursor no alvo";
+    let on=0,tot=0,t0=performance.now(),trail=[];
+    const path=t=>{const k=t*(1+t/DUR*0.0)/1000,sp=1+t/DUR*.9;return[cxm+ax*(.65*Math.sin(k*.9*sp+ph[0])+.35*Math.sin(k*2.1*sp+ph[1])),cym+ay*(.6*Math.sin(k*1.2*sp+ph[2])+.4*Math.cos(k*2.6*sp+ph[3]))]};
+    while(true){await frame();const t=performance.now()-t0;if(t>DUR)break;
+      const [x,y]=path(t);DBG.t="rastreio";DBG.x=x;DBG.y=y;const inside=Math.hypot(P.x-x,P.y-y)<=r*1.15&&(!T||P.down);tot++;if(inside)on++;
+      trail.push([x,y]);if(trail.length>24)trail.shift();
+      bg();cx.strokeStyle="rgba(242,189,82,.25)";cx.lineWidth=2;cx.beginPath();trail.forEach((p,i)=>i?cx.lineTo(p[0],p[1]):cx.moveTo(p[0],p[1]));cx.stroke();
+      target(x,y,r,inside);
+      cx.fillStyle="rgba(255,255,255,.08)";cx.fillRect(W*.2,H-26,W*.6,6);cx.fillStyle="#f2bd52";cx.fillRect(W*.2,H-26,W*.6*(t/DUR),6);
+      hudP.textContent=`${Math.round(on/tot*100)}% no alvo`;
+    }
+    const pct=on/Math.max(1,tot);
+    return{score:lin(pct,.25,.9),raw:Math.round(pct*100)+"% do tempo no alvo",v:Math.round(pct*100)};
+  }
+  /* ---------- 4. controle de recuo ---------- */
+  async function tRecoil(){
+    const SPRAYS=3,SHOTS=28,RATE=95,devs=[];
+    for(let s=0;s<SPRAYS;s++){
+      hudP.textContent=`Spray ${s+1} de ${SPRAYS}`;
+      const ox=W/2,oy=H/2+30;let fired=0,holes=[],dsum=0,rx=0,ry=0,armed=false,d0=null,last=0,done=false;
+      onDown=()=>{if(!armed){armed=true;d0={x:P.x,y:P.y};last=performance.now()}};
+      onUp=()=>{if(armed)done=true};
+      while(!done){await frame();
+        const now=performance.now();
+        if(armed&&P.down){while(now-last>=RATE&&fired<SHOTS){last+=RATE;fired++;
+          ry-=M*(.011+fired*.0006);rx+=(Math.random()-.5)*M*.012+(fired>8?M*.0016*Math.sin(fired*.5):0);
+          const px=ox+rx+(P.x-d0.x),py=oy+ry+(P.y-d0.y);holes.push([px,py]);dsum+=Math.hypot(px-ox,py-oy)/M}
+          if(fired>=SHOTS)done=true}
+        bg();
+        [M*.04,M*.1,M*.18].forEach((rr,i)=>{cx.strokeStyle=`rgba(255,255,255,${.22-i*.05})`;cx.lineWidth=1.5;cx.beginPath();cx.arc(ox,oy,rr,0,7);cx.stroke()});
+        cx.fillStyle="#ff3048";holes.forEach(([x,y],i)=>{cx.globalAlpha=.35+.65*i/Math.max(1,holes.length);cx.beginPath();cx.arc(x,y,Math.max(3,M*.008),0,7);cx.fill()});cx.globalAlpha=1;
+        DBG.t="recuo";DBG.rx=rx;DBG.ry=ry;DBG.ox=ox;DBG.oy=oy;DBG.armed=armed;DBG.fired=fired;
+        const ax=armed?ox+rx+(P.x-d0.x):ox,ay=armed?oy+ry+(P.y-d0.y):oy;cross(ax,ay,M*.035,"#f2bd52");
+        if(!armed){text(T?"Segure o dedo na tela para atirar":"Segure o botão do mouse para atirar",H*.18,Math.round(M*.045),"#f4f5f7","Barlow");
+          text("Arraste para baixo para segurar a mira no centro",H*.18+M*.06,Math.round(M*.032),"#a8b0bd","Barlow")}
+        else text(`${fired}/${SHOTS}`,H-40,Math.round(M*.04),"#f2bd52");
+      }
+      onDown=onUp=null;
+      if(fired<10){const f0=performance.now();while(performance.now()-f0<1100){await frame();bg();text("Segure até o fim do spray",H/2,Math.round(M*.06),"#ff3048")}s--;continue}
+      devs.push(dsum/fired);
+      const f0=performance.now();while(performance.now()-f0<800){await frame()}
+    }
+    const avg=devs.reduce((a,b)=>a+b,0)/devs.length;
+    return{score:lin(avg,.24,.035),raw:"desvio médio de "+Math.round(avg*100)+"% da tela",v:Math.round(avg*1000)/10};
+  }
+  const RUN={reacao:tReaction,precisao:tFlick,rastreio:tTrack,recuo:tRecoil};
+  const HOW={
+    reacao:["Reação","Quando o alvo aparecer, toque na tela o mais rápido possível. Tocar antes conta como antecipação.","5 rodadas"],
+    precisao:["Precisão","Alvos aparecem um de cada vez em lugares diferentes. Acerte cada um antes de o anel dourado acabar.","15 alvos"],
+    rastreio:["Rastreamento",T?"Um alvo vai se mover pela tela. Mantenha o dedo sobre ele o tempo todo.":"Um alvo vai se mover pela tela. Mantenha o cursor sobre ele o tempo todo.","12 segundos"],
+    recuo:["Controle de recuo",(T?"Segure o dedo na tela para atirar.":"Segure o botão do mouse para atirar.")+" A mira sobe e balança como num spray: arraste para baixo para mantê-la no centro.","3 sprays"]
+  };
+  /* ---------- execução ---------- */
+  async function run(keys){
+    open();const out={};
+    try{
+      for(const k of keys){
+        hudT.textContent=HOW[k][0];hudP.textContent="";bg();
+        await screen(`<div class="dg-card"><p class="dg-step">${keys.length>1?`Teste ${keys.indexOf(k)+1} de ${keys.length}`:"Teste"}</p><h3>${HOW[k][0]}</h3><p>${HOW[k][1]}</p><p class="dg-dur">${HOW[k][2]}</p><button type="button" class="btn" data-go="1">Começar</button></div>`);
+        await countdown();out[k]=await RUN[k]();
+      }
+      const entry={d:new Date().toISOString(),s:{},r:{}};keys.forEach(k=>{entry.s[k]=out[k].score;entry.r[k]=out[k].raw});
+      (db[DEV]=db[DEV]||[]).push(entry);db[DEV]=db[DEV].slice(-30);saveDb();render();
+      hudT.textContent="Resultado";hudP.textContent="";bg();
+      const tot=keys.length===4?Math.round(keys.reduce((a,k)=>a+out[k].score,0)/4):null;
+      const go=await screen(`<div class="dg-card dg-sum"><h3>${tot!==null?`Nota geral <b>${tot}</b>`:"Resultado"}</h3>${tot!==null?`<p class="dg-lvl">${level(tot)}</p>`:""}
+        <ul>${keys.map(k=>`<li><span>${HOW[k][0]}</span><i><em style="width:${out[k].score}%"></em></i><b>${out[k].score}</b><small>${esc(out[k].raw)}</small></li>`).join("")}</ul>
+        <div class="dg-acts"><button type="button" class="btn" data-go="see">Ver perfil completo</button><button type="button" class="btn secondary" data-go="again">Refazer</button></div></div>`);
+      close();
+      if(go==="again")setTimeout(()=>run(keys),60);else document.getElementById("dgResult").scrollIntoView({behavior:"smooth",block:"start"});
+    }catch(e){if(!(e instanceof Abort))throw e;close()}
+  }
+  root.addEventListener("click",e=>{const b=e.target.closest("[data-dg]");if(!b)return;const k=b.dataset.dg;run(k==="all"?SK.map(s=>s.k):[k])});
+
+  /* ---------- perfil na seção ---------- */
+  const level=v=>v>=70?"Avançado":v>=40?"Intermediário":"Iniciante";
+  function profile(list){const p={},prev={};
+    for(let i=list.length-1;i>=0;i--)for(const k in list[i].s){if(p[k]===undefined){p[k]={v:list[i].s[k],r:list[i].r[k],i}}else if(prev[k]===undefined&&i<p[k].i)prev[k]=list[i].s[k]}
+    return{p,prev}}
+  function radar(vals,prev){
+    const R=110,c=140,ang=i=>-Math.PI/2+i*Math.PI/2,pt=(i,v)=>[c+Math.cos(ang(i))*R*v/100,c+Math.sin(ang(i))*R*v/100];
+    let g=`<svg class="dg-radar" viewBox="-30 0 340 290" role="img" aria-label="Perfil: ${SK.map((s,i)=>s.n+" "+(vals[i]??"sem teste")).join(", ")}">`;
+    [25,50,75,100].forEach(l=>{g+=`<polygon points="${SK.map((_,i)=>pt(i,l).join(",")).join(" ")}" class="rg${l===100?" o":""}"/>`});
+    SK.forEach((_,i)=>{const [x,y]=pt(i,100);g+=`<line x1="${c}" y1="${c}" x2="${x}" y2="${y}" class="rg"/>`});
+    if(prev&&prev.every(v=>v!=null))g+=`<polygon points="${prev.map((v,i)=>pt(i,v).join(",")).join(" ")}" class="rp"/>`;
+    if(vals.some(v=>v!=null)){g+=`<polygon points="${vals.map((v,i)=>pt(i,v??0).join(",")).join(" ")}" class="rv"/>`;vals.forEach((v,i)=>{if(v!=null){const [x,y]=pt(i,v);g+=`<circle cx="${x}" cy="${y}" r="4" class="rd"/>`}})}
+    const lab=[[c,16,"middle"],[c+R+10,c+4,"start"],[c,c+R+24,"middle"],[c-R-10,c+4,"end"]];
+    SK.forEach((s,i)=>{g+=`<text x="${lab[i][0]}" y="${lab[i][1]}" text-anchor="${lab[i][2]}">${s.sn||s.n}</text>`});
+    return g+"</svg>";
+  }
+  function render(){
+    const el=document.getElementById("dgResult");if(!el)return;
+    const list=db[DEV]||[];
+    if(!list.length){el.innerHTML=`<div class="dg-empty">${radar([null,null,null,null])}<h3>Seu perfil aparece aqui</h3><p class="muted">Faça o diagnóstico completo para ver a nota de cada habilidade, o nível geral e o que treinar primeiro.</p></div>`;return}
+    const {p,prev}=profile(list),vals=SK.map(s=>p[s.k]?p[s.k].v:null),pv=SK.map(s=>prev[s.k]??null);
+    const all=vals.every(v=>v!=null),tot=all?Math.round(vals.reduce((a,b)=>a+b,0)/4):null;
+    const weak=all?SK.reduce((a,s)=>p[s.k].v<p[a.k].v?s:a,SK[0]):null;
+    const full=list.filter(e=>Object.keys(e.s).length===4).slice(-6).reverse();
+    el.innerHTML=`<div class="dg-top"><div>${radar(vals,pv)}<p class="dg-leg"><i class="v"></i>Atual ${pv.some(v=>v!=null)?'<i class="p"></i>Anterior':""}</p></div>
+      <div class="dg-score">${tot!==null?`<small>Nota geral</small><b>${tot}</b><span class="dg-badge">${level(tot)}</span>`:`<small>Perfil parcial</small><p class="muted">Faça os 4 testes para ter a nota geral.</p>`}
+      <p class="dg-dev">${T?"Resultados do celular":"Resultados do computador"} · ${new Date(list[list.length-1].d).toLocaleDateString("pt-BR")}</p></div></div>
+      <ul class="dg-skills">${SK.map((s,i)=>{const v=vals[i],d=v!=null&&pv[i]!=null?v-pv[i]:null;return `<li><span>${s.n}</span><i><em style="width:${v??0}%"></em></i><b>${v??"—"}</b>${d?`<em class="dg-d ${d>0?"up":"down"}">${d>0?"▲":"▼"} ${Math.abs(d)}</em>`:""}<small>${v!=null?esc(p[s.k].r):"Ainda não testado"}</small></li>`}).join("")}</ul>
+      ${weak?`<div class="dg-rec"><small>Ponto a treinar primeiro</small><b>${REC[weak.k][0]}</b><p>${REC[weak.k][1]}</p><a href="${REC[weak.k][2]}">${REC[weak.k][3]}</a></div>`:""}
+      ${full.length>1?`<div class="dg-hist"><small>Últimos diagnósticos completos</small><ol>${full.map(e=>{const t=Math.round(Object.values(e.s).reduce((a,b)=>a+b,0)/4);return `<li><span>${new Date(e.d).toLocaleDateString("pt-BR")}</span><i><em style="width:${t}%"></em></i><b>${t}</b></li>`}).join("")}</ol></div>`:""}
+      <button type="button" class="chipbtn dg-clear" id="dgClear">Apagar resultados deste aparelho</button>`;
+    const c=document.getElementById("dgClear");
+    c.onclick=()=>{if(!c.dataset.armed){c.dataset.armed="1";c.textContent="Confirmar: apagar resultados";setTimeout(()=>{if(c.isConnected){delete c.dataset.armed;c.textContent="Apagar resultados deste aparelho"}},3000);return}
+      db[DEV]=[];saveDb();render()};
+  }
+  const devEl=document.getElementById("dgDevice");if(devEl)devEl.textContent=T?"Celular ou tablet (toque)":"Computador (mouse)";
+  render();
+  window.__tksDiag={run,db:()=>db,dev:DEV,dbg:DBG};
+})();
