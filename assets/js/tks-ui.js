@@ -449,8 +449,7 @@
 /* ===== TKS ACADEMY · Diagnóstico de mira (minigame) ===== */
 (function(){
   const root=document.getElementById("diagnostico");if(!root)return;
-  const KEY="tksDiag",DEV=matchMedia("(pointer:coarse)").matches?"touch":"mouse";
-  const T=DEV==="touch";
+  const KEY="tksDiag",T=matchMedia("(pointer:coarse)").matches,DEV=T?"mobile":"mouse";
   let db={};try{db=JSON.parse(localStorage.getItem(KEY)||"{}")||{}}catch(e){}
   const saveDb=()=>{try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){}};
   const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
@@ -471,25 +470,66 @@
 
   /* ---------- arena (tela cheia) ---------- */
   const ov=document.createElement("div");ov.className="dg-arena";ov.hidden=true;ov.setAttribute("role","dialog");ov.setAttribute("aria-modal","true");ov.setAttribute("aria-label","Diagnóstico de mira");
-  ov.innerHTML=`<canvas></canvas><div class="dg-hud"><b class="dg-title"></b><span class="dg-prog"></span><button type="button" class="dg-x" aria-label="Sair do diagnóstico">×</button></div><div class="dg-screen" hidden></div>`;
+  ov.innerHTML=`<canvas></canvas><div class="dg-hud"><b class="dg-title"></b><span class="dg-prog"></span><button type="button" class="dg-x" aria-label="Sair do diagnóstico">×</button></div><div class="dg-screen" hidden></div><div class="dg-rot" role="status"><svg viewBox="0 0 64 64" aria-hidden="true"><rect class="ph" x="20" y="8" width="24" height="44" rx="5"/><path class="ar" d="M50 40a20 20 0 0 1-14 14m0 0 5-1m-5 1 2-5"/></svg><b>Gire o celular</b><p>O diagnóstico funciona com o celular deitado, como no jogo.</p></div>`;
+  if(T)ov.classList.add("mob");
   document.body.appendChild(ov);
   const cv=ov.querySelector("canvas"),cx=cv.getContext("2d"),hudT=ov.querySelector(".dg-title"),hudP=ov.querySelector(".dg-prog"),scr=ov.querySelector(".dg-screen");
   let W=0,H=0,M=0,dpr=1,abort=false,P={x:-999,y:-999,down:false},onDown=null,onUp=null;
   function size(){dpr=Math.min(2,devicePixelRatio||1);W=ov.clientWidth;H=ov.clientHeight;M=Math.min(W,H);cv.width=W*dpr;cv.height=H*dpr;cx.setTransform(dpr,0,0,dpr,0,0)}
   addEventListener("resize",()=>{if(!ov.hidden)size()});
   const pos=e=>{const r=cv.getBoundingClientRect();P.x=e.clientX-r.left;P.y=e.clientY-r.top};
-  cv.addEventListener("pointerdown",e=>{e.preventDefault();try{cv.setPointerCapture(e.pointerId)}catch(_){}pos(e);P.down=true;if(onDown)onDown(e)});
-  cv.addEventListener("pointermove",e=>{pos(e)});
-  const up=e=>{pos(e);P.down=false;if(onUp)onUp(e);if(T){P.x=P.y=-999}};
+  const xy=e=>{const r=cv.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}};
+  /* modo celular: mira fixa no centro, o dedo direito move a câmera (como no PUBG) */
+  const IN={fire:false,fireId:null,aimId:null,ax:0,ay:0},cam={x:0,y:0};
+  let SENS=clamp(+((db.cfg||{}).sens)||100,50,200),onFire=null;
+  const GAIN=()=>1.1*SENS/100;
+  const portrait=()=>T&&innerHeight>innerWidth;
+  const fireZone=x=>x<W*.42;
+  const FIRE=()=>({x:Math.max(92,W*.14),y:H*.68,r:Math.max(42,M*.14)});
+  const AIM=()=>({x:cam.x+W/2,y:cam.y+H/2});
+  const S=w=>({x:w.x-cam.x,y:w.y-cam.y});
+  function relAll(){IN.fire=false;IN.fireId=IN.aimId=null}
+  cv.addEventListener("pointerdown",e=>{e.preventDefault();try{cv.setPointerCapture(e.pointerId)}catch(_){}
+    if(T){if(portrait())return;const q=xy(e);
+      if(fireZone(q.x)){if(IN.fireId===null){IN.fireId=e.pointerId;IN.fire=true;if(onFire)onFire()}}
+      else if(IN.aimId===null){IN.aimId=e.pointerId;IN.ax=q.x;IN.ay=q.y}
+      return}
+    pos(e);P.down=true;if(onDown)onDown(e)});
+  cv.addEventListener("pointermove",e=>{
+    if(T){if(e.pointerId===IN.aimId){const q=xy(e),g=GAIN();cam.x+=(q.x-IN.ax)*g;cam.y+=(q.y-IN.ay)*g;IN.ax=q.x;IN.ay=q.y}return}
+    pos(e)});
+  const up=e=>{
+    if(T){if(e.pointerId===IN.fireId){IN.fireId=null;IN.fire=false}if(e.pointerId===IN.aimId)IN.aimId=null;return}
+    pos(e);P.down=false;if(onUp)onUp(e)};
   cv.addEventListener("pointerup",up);cv.addEventListener("pointercancel",up);
   cv.addEventListener("pointerleave",()=>{if(!P.down&&!T){P.x=P.y=-999}});
   const DBG={};
   class Abort extends Error{}
   const chk=()=>{if(abort)throw new Abort()};
-  const frame=()=>new Promise(r=>requestAnimationFrame(r)).then(t=>{chk();return t});
-  async function wait(ms){const t0=performance.now();while(performance.now()-t0<ms)await frame()}
-  function bg(){cx.fillStyle="#07090d";cx.fillRect(0,0,W,H);cx.strokeStyle="rgba(255,255,255,.035)";cx.lineWidth=1;const g=Math.max(40,M/10);
-    cx.beginPath();for(let x=g;x<W;x+=g){cx.moveTo(x,0);cx.lineTo(x,H)}for(let y=g;y<H;y+=g){cx.moveTo(0,y);cx.lineTo(W,y)}cx.stroke()}
+  let pausedMs=0;const clk=()=>performance.now()-pausedMs;
+  const raf=()=>new Promise(r=>requestAnimationFrame(r)).then(t=>{chk();return t});
+  async function frame(){const t=await raf();
+    if(portrait()){const p0=performance.now();relAll();DBG.paused=true;while(portrait())await raf();pausedMs+=performance.now()-p0;DBG.paused=false;size()}
+    return t}
+  async function wait(ms){const t0=clk();while(clk()-t0<ms)await frame()}
+  function bg(){cx.fillStyle="#07090d";cx.fillRect(0,0,W,H);const g=Math.max(40,M/10);
+    const ox=T?-(((cam.x%g)+g)%g):g,oy=T?-(((cam.y%g)+g)%g):g;
+    cx.strokeStyle=`rgba(255,255,255,${T?.06:.035})`;cx.lineWidth=1;
+    cx.beginPath();for(let x=ox;x<W;x+=g){cx.moveTo(x,0);cx.lineTo(x,H)}for(let y=oy;y<H;y+=g){cx.moveTo(0,y);cx.lineTo(W,y)}cx.stroke();
+    if(T){const g2=g*4,o2x=-(((cam.x%g2)+g2)%g2),o2y=-(((cam.y%g2)+g2)%g2);cx.fillStyle="rgba(242,189,82,.16)";
+      for(let x=o2x;x<W+g2;x+=g2)for(let y=o2y;y<H+g2;y+=g2){cx.beginPath();cx.arc(x,y,2,0,7);cx.fill()}}}
+  function textAt(s,x,y,size=16,col="#f4f5f7",font="Barlow"){cx.fillStyle=col;cx.font=`700 ${size}px "${font}",sans-serif`;cx.textAlign="center";cx.textBaseline="middle";cx.fillText(s,x,y)}
+  /* controles desenhados por cima da cena (só no celular) */
+  function ctrls(hint,col){if(!T)return;const f=FIRE();cx.save();
+    cx.fillStyle=IN.fire?"rgba(255,48,72,.5)":"rgba(16,20,27,.6)";cx.strokeStyle=IN.fire?"#ff3048":"rgba(244,245,247,.55)";cx.lineWidth=2.5;
+    cx.beginPath();cx.arc(f.x,f.y,f.r,0,7);cx.fill();cx.stroke();
+    const u=f.r/40;cx.fillStyle="#f4f5f7";cx.beginPath();cx.moveTo(f.x-6*u,f.y+16*u);cx.lineTo(f.x-6*u,f.y-4*u);cx.quadraticCurveTo(f.x,f.y-20*u,f.x+6*u,f.y-4*u);cx.lineTo(f.x+6*u,f.y+16*u);cx.closePath();cx.fill();
+    cx.fillRect(f.x-8*u,f.y+18*u,16*u,4*u);
+    const c=col||"#f4f5f7",k=M*.032;cross(W/2,H/2,k,c);cx.fillStyle=c;cx.beginPath();cx.arc(W/2,H/2,2,0,7);cx.fill();
+    if(hint){textAt("Segure para atirar",f.x,f.y+f.r+18,Math.round(M*.04),"#f2bd52");
+      const zx=W*.71,zy=H*.66;cx.setLineDash([6,6]);cx.strokeStyle="rgba(242,189,82,.45)";cx.lineWidth=2;cx.beginPath();cx.roundRect?cx.roundRect(W*.47,H*.42,W*.48,H*.5,18):cx.rect(W*.47,H*.42,W*.48,H*.5);cx.stroke();cx.setLineDash([]);
+      textAt("Arraste aqui para mirar",zx,zy,Math.round(M*.042),"#f2bd52");textAt("← →   ↑ ↓",zx,zy+M*.07,Math.round(M*.04),"rgba(242,189,82,.7)")}
+    cx.restore()}
   function text(s,y,size=22,col="#f4f5f7",font="Barlow Condensed"){cx.fillStyle=col;cx.font=`700 ${size}px "${font}",sans-serif`;cx.textAlign="center";cx.textBaseline="middle";cx.fillText(s,W/2,y)}
   function target(x,y,r,on){
     cx.save();cx.translate(x,y);
@@ -503,10 +543,12 @@
   function screen(html){return new Promise((res,rej)=>{scr.innerHTML=html;scr.hidden=false;curRej=rej;
     scr.querySelectorAll("[data-go]").forEach(x=>x.onclick=()=>{curRej=null;scr.hidden=true;res(x.dataset.go)});
     const b=scr.querySelector("[data-go]");if(b)b.focus()})}
-  async function countdown(){for(let i=3;i>0;i--){const t0=performance.now();while(performance.now()-t0<600){await frame();bg();text(String(i),H/2,Math.round(M*.22),"#f2bd52")}}}
+  async function countdown(){for(let i=3;i>0;i--){const t0=clk();while(clk()-t0<600){await frame();bg();text(String(i),T?H*.3:H/2,Math.round(M*(T?.16:.22)),"#f2bd52");ctrls(true)}}}
   function open(){abort=false;ov.hidden=false;document.documentElement.classList.add("dg-lock");size();bg();
-    if(T&&ov.requestFullscreen)ov.requestFullscreen().catch(()=>{})}
-  function close(){abort=true;onDown=onUp=null;ov.hidden=true;scr.hidden=true;if(curRej){const r=curRej;curRej=null;r(new Abort())}document.documentElement.classList.remove("dg-lock");
+    cam.x=cam.y=0;relAll();
+    if(T&&ov.requestFullscreen)ov.requestFullscreen().then(()=>{const o=window.screen&&window.screen.orientation;if(o&&o.lock)return o.lock("landscape").catch(()=>{})}).catch(()=>{})}
+  function close(){abort=true;onDown=onUp=onFire=null;ov.hidden=true;scr.hidden=true;if(curRej){const r=curRej;curRej=null;r(new Abort())}document.documentElement.classList.remove("dg-lock");
+    relAll();try{const o=window.screen&&window.screen.orientation;if(o&&o.unlock)o.unlock()}catch(_){}
     if(document.fullscreenElement)document.exitFullscreen().catch(()=>{})}
   ov.querySelector(".dg-x").addEventListener("click",close);
   addEventListener("keydown",e=>{if(e.key==="Escape"&&!ov.hidden)close()});
@@ -603,21 +645,132 @@
     const avg=devs.reduce((a,b)=>a+b,0)/devs.length;
     return{score:lin(avg,.24,.035),raw:"desvio médio de "+Math.round(avg*100)+"% da tela",v:Math.round(avg*1000)/10};
   }
-  const RUN={reacao:tReaction,precisao:tFlick,rastreio:tTrack,recuo:tRecoil};
-  const HOW={
-    reacao:["Reação","Quando o alvo aparecer, toque na tela o mais rápido possível. Tocar antes conta como antecipação.","5 rodadas"],
+
+  /* =========== modo celular: mira fixa, câmera no dedo direito, tiro no botão esquerdo =========== */
+  const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+  async function flash(ms,draw){const f0=clk();while(clk()-f0<ms){await frame();bg();draw();ctrls()}}
+  /* 1. reação: o alvo surge na mira; atire o mais rápido possível */
+  async function mReaction(){
+    const N=5,times=[];let fouls=0;
+    while(times.length<N){
+      hudP.textContent=`${times.length+1} de ${N}`;
+      let state="wait",t0=0,res=null,tw=null;
+      const delay=1100+Math.random()*2400,start=clk(),r=Math.max(26,M*.075);
+      onFire=()=>{if(state==="wait")res="foul";else if(state==="go")res=clk()-t0};
+      while(res===null){await frame();bg();
+        if(state==="wait"){text("Aguarde o alvo…",H*.28,Math.round(M*.06),"#a8b0bd");if(clk()-start>delay){state="go";t0=clk();const a=AIM();tw={x:a.x,y:a.y}}}
+        if(state==="go"){const q=S(tw);target(q.x,q.y,r,false)}
+        ctrls();DBG.t="reacao";DBG.state=state;
+      }
+      onFire=null;
+      if(res==="foul"){fouls++;await flash(900,()=>{text("Cedo demais",H*.28,Math.round(M*.08),"#ff3048");text("Espere o alvo aparecer",H*.28+M*.09,Math.round(M*.04),"#a8b0bd","Barlow")});continue}
+      times.push(res);await flash(700,()=>text(Math.round(res)+" ms",H*.28,Math.round(M*.1),"#65df9a"));
+    }
+    const s=[...times].sort((a,b)=>a-b),med=s[Math.floor(s.length/2)];
+    const score=Math.max(0,lin(med,540,240)-fouls*4);
+    return{score,raw:Math.round(med)+" ms"+(fouls?` · ${fouls} ${fouls>1?"antecipações":"antecipação"}`:""),v:Math.round(med)};
+  }
+  /* 2. precisão: arraste para pôr a mira no alvo e atire */
+  function spot(r){const f=FIRE();
+    for(let k=0;k<30;k++){const a=Math.random()*Math.PI*2,d=M*(.2+Math.random()*.24);
+      const x=clamp(W/2+Math.cos(a)*d*1.35,r*2,W-r*2),y=clamp(H/2+Math.sin(a)*d,70+r,H-r*2);
+      if(Math.hypot(x-f.x,y-f.y)>f.r+r*2&&Math.hypot(x-W/2,y-H/2)>M*.16)return{x,y}}
+    return{x:W*.75,y:H*.3}}
+  async function mFlick(){
+    const N=15,LIFE=2600,hits=[];let miss=0;const r=Math.max(18,M*.05);
+    for(let i=0;i<N;i++){
+      hudP.textContent=`${i+1} de ${N}`;
+      const q0=spot(r),tw={x:q0.x+cam.x,y:q0.y+cam.y},t0=clk();let out=null;
+      onFire=()=>{out=dist(AIM(),tw)<=r*1.15?"hit":"miss"};
+      while(out===null){await frame();const age=clk()-t0;if(age>LIFE){out="late";break}
+        bg();const q=S(tw);target(q.x,q.y,r,dist(AIM(),tw)<=r*1.15);cx.strokeStyle="rgba(242,189,82,.7)";cx.lineWidth=3;cx.beginPath();cx.arc(q.x,q.y,r+7,-Math.PI/2,-Math.PI/2+Math.PI*2*(1-age/LIFE));cx.stroke();
+        ctrls();DBG.t="precisao";DBG.i=i;DBG.tw=tw;}
+      onFire=null;
+      if(out==="hit")hits.push(clk()-t0);else miss++;
+      await flash(160,()=>{const q=S(tw);if(out==="hit")target(q.x,q.y,r,true);else{cx.strokeStyle="#ff3048";cx.lineWidth=3;cross(q.x,q.y,r)}});
+    }
+    const acc=hits.length/N,avg=hits.length?hits.reduce((a,b)=>a+b,0)/hits.length:LIFE;
+    const speed=clamp((2200-avg)/(2200-750));
+    const score=Math.round(100*(.6*acc+.4*speed*(hits.length?1:0)));
+    return{score,raw:`${hits.length}/${N} acertos · ${Math.round(avg)} ms`,v:Math.round(acc*100)};
+  }
+  /* 3. rastreamento: segure o tiro e mantenha a mira no alvo em movimento */
+  async function mTrack(){
+    const DUR=12000,r=Math.max(24,M*.065),c0=AIM(),ax=W*.3,ay=(H-90)*.3;
+    const ph=[Math.random()*6,Math.random()*6,Math.random()*6,Math.random()*6];
+    let on=0,tot=0,t0=clk(),trail=[];
+    const path=t=>{const k=t/1000*.8,sp=1+t/DUR*.8;return{x:c0.x+ax*(.65*Math.sin(k*.9*sp+ph[0])+.35*Math.sin(k*2.1*sp+ph[1])),y:c0.y+ay*(.6*Math.sin(k*1.2*sp+ph[2])+.4*Math.cos(k*2.6*sp+ph[3]))}};
+    while(true){await frame();const t=clk()-t0;if(t>DUR)break;
+      const tw=path(t),near=dist(AIM(),tw)<=r*1.15,inside=near&&IN.fire;tot++;if(inside)on++;
+      DBG.t="rastreio";DBG.tw=tw;
+      trail.push(tw);if(trail.length>24)trail.shift();
+      bg();cx.strokeStyle="rgba(242,189,82,.25)";cx.lineWidth=2;cx.beginPath();trail.forEach((w,i)=>{const q=S(w);i?cx.lineTo(q.x,q.y):cx.moveTo(q.x,q.y)});cx.stroke();
+      const q=S(tw);target(q.x,q.y,r,inside);
+      if(near&&!IN.fire)text("Segure o tiro",H*.2,Math.round(M*.045),"#f2bd52","Barlow");
+      cx.fillStyle="rgba(255,255,255,.08)";cx.fillRect(W*.3,H-22,W*.4,6);cx.fillStyle="#f2bd52";cx.fillRect(W*.3,H-22,W*.4*(t/DUR),6);
+      ctrls(false,inside?"#65df9a":null);
+      hudP.textContent=`${Math.round(on/tot*100)}% no alvo`;
+    }
+    const pct=on/Math.max(1,tot);
+    return{score:lin(pct,.2,.85),raw:Math.round(pct*100)+"% do tempo no alvo",v:Math.round(pct*100)};
+  }
+  /* 4. recuo: segure o tiro; a câmera sobe com o coice e o dedo direito puxa para baixo */
+  async function mRecoil(){
+    const SPRAYS=3,SHOTS=28,RATE=95,devs=[];
+    for(let s=0;s<SPRAYS;s++){
+      hudP.textContent=`Spray ${s+1} de ${SPRAYS}`;
+      let fired=0,holes=[],dsum=0,armed=false,last=0,done=false,board=AIM();
+      while(IN.fire){await frame();bg();text("Solte o tiro para começar o spray",H*.25,Math.round(M*.05),"#f2bd52","Barlow");ctrls(false,"#f2bd52");DBG.t="recuo-espera"}
+      while(!done){await frame();const now=clk();
+        if(!armed){board=AIM();if(IN.fire){armed=true;last=now}}
+        if(armed){if(!IN.fire)done=true;else{while(now-last>=RATE&&fired<SHOTS){last+=RATE;fired++;
+          cam.y-=M*(.011+fired*.0006);cam.x+=(Math.random()-.5)*M*.012+(fired>8?M*.0016*Math.sin(fired*.5):0);
+          const a=AIM(),h={x:a.x+(Math.random()-.5)*M*.006,y:a.y+(Math.random()-.5)*M*.006};holes.push(h);dsum+=dist(h,board)/M}
+          if(fired>=SHOTS)done=true}}
+        bg();const b=S(board);
+        [M*.04,M*.1,M*.18].forEach((rr,i)=>{cx.strokeStyle=`rgba(255,255,255,${.3-i*.07})`;cx.lineWidth=1.5;cx.beginPath();cx.arc(b.x,b.y,rr,0,7);cx.stroke()});
+        cx.fillStyle="#ff3048";cx.beginPath();cx.arc(b.x,b.y,3,0,7);cx.fill();
+        holes.forEach((h,i)=>{const q=S(h);cx.globalAlpha=.35+.65*i/Math.max(1,holes.length);cx.beginPath();cx.arc(q.x,q.y,Math.max(3,M*.008),0,7);cx.fill()});cx.globalAlpha=1;
+        if(!armed){text("Segure o tiro até o fim do spray",H*.18,Math.round(M*.05),"#f4f5f7","Barlow");text("Puxe o dedo direito para baixo para manter a mira no centro",H*.18+M*.07,Math.round(M*.036),"#a8b0bd","Barlow")}
+        else text(`${fired}/${SHOTS}`,H-30,Math.round(M*.045),"#f2bd52");
+        ctrls(false,"#f2bd52");DBG.t="recuo";DBG.board=board;DBG.armed=armed;DBG.fired=fired;
+      }
+      if(fired<10){await flash(1100,()=>text("Segure até o fim do spray",H*.3,Math.round(M*.06),"#ff3048"));s--;continue}
+      devs.push(dsum/fired);
+      await flash(800,()=>{const b=S(board);cx.fillStyle="#ff3048";holes.forEach(h=>{const q=S(h);cx.beginPath();cx.arc(q.x,q.y,Math.max(3,M*.008),0,7);cx.fill()});[M*.04,M*.1,M*.18].forEach(rr=>{cx.strokeStyle="rgba(255,255,255,.2)";cx.beginPath();cx.arc(b.x,b.y,rr,0,7);cx.stroke()})});
+    }
+    const avg=devs.reduce((a,b)=>a+b,0)/devs.length;
+    return{score:lin(avg,.24,.035),raw:"desvio médio de "+Math.round(avg*100)+"% da tela",v:Math.round(avg*1000)/10};
+  }
+  const RUN=T?{reacao:mReaction,precisao:mFlick,rastreio:mTrack,recuo:mRecoil}:{reacao:tReaction,precisao:tFlick,rastreio:tTrack,recuo:tRecoil};
+  const HOW=T?{
+    reacao:["Reação","O alvo aparece em cima da mira. Aperte o botão de tiro o mais rápido possível. Atirar antes conta como antecipação.","5 rodadas"],
+    precisao:["Precisão","Alvos surgem fora do centro. Arraste o dedo direito para levar a mira até o alvo e atire antes de o anel dourado acabar.","15 alvos"],
+    rastreio:["Rastreamento","Um alvo vai se mover. Segure o tiro e mantenha a mira em cima dele arrastando o dedo direito.","12 segundos"],
+    recuo:["Controle de recuo","Segure o tiro até o fim do spray. A câmera sobe e balança com o coice: puxe o dedo direito para baixo para manter a mira no centro.","3 sprays"]
+  }:{
+    reacao:["Reação","Quando o alvo aparecer, clique o mais rápido possível. Clicar antes conta como antecipação.","5 rodadas"],
     precisao:["Precisão","Alvos aparecem um de cada vez em lugares diferentes. Acerte cada um antes de o anel dourado acabar.","15 alvos"],
-    rastreio:["Rastreamento",T?"Um alvo vai se mover pela tela. Mantenha o dedo sobre ele o tempo todo.":"Um alvo vai se mover pela tela. Mantenha o cursor sobre ele o tempo todo.","12 segundos"],
-    recuo:["Controle de recuo",(T?"Segure o dedo na tela para atirar.":"Segure o botão do mouse para atirar.")+" A mira sobe e balança como num spray: arraste para baixo para mantê-la no centro.","3 sprays"]
+    rastreio:["Rastreamento","Um alvo vai se mover pela tela. Mantenha o cursor sobre ele o tempo todo.","12 segundos"],
+    recuo:["Controle de recuo","Segure o botão do mouse para atirar. A mira sobe e balança como num spray: arraste para baixo para mantê-la no centro.","3 sprays"]
   };
+  const CTRL=`<div class="dg-ctrl"><span><i class="f" aria-hidden="true"></i>Esquerda: botão de tiro</span><span><i class="a" aria-hidden="true"></i>Direita: arraste para mirar</span></div>`;
+  const sensUI=()=>`<label class="dg-sens"><span>Sensibilidade do teste <output>${SENS}%</output></span><input type="range" min="50" max="200" step="10" value="${SENS}" aria-label="Sensibilidade do teste"></label>`;
+  function bindSens(){const i=scr.querySelector(".dg-sens input");if(!i)return;const o=scr.querySelector(".dg-sens output");
+    i.oninput=()=>{SENS=+i.value;o.textContent=SENS+"%";db.cfg=Object.assign({},db.cfg,{sens:SENS});saveDb()}}
   /* ---------- execução ---------- */
+  let pcOk=false;
   async function run(keys){
     open();const out={};
     try{
+      if(!T&&!pcOk){hudT.textContent="Diagnóstico";hudP.textContent="";bg();
+        const g=await screen(`<div class="dg-card dg-pc"><p class="dg-step">Feito para celular</p><h3>Melhor no celular</h3><p>No celular, com o aparelho deitado, o botão de tiro fica à esquerda e o dedo direito move a câmera, como no PUBG Mobile. Abra este site no celular para o resultado que vale.</p><p class="dg-dur">No computador você joga com o mouse, e o resultado fica separado do celular.</p><div class="dg-acts"><button type="button" class="btn" data-go="1">Jogar com o mouse</button><button type="button" class="btn secondary" data-go="x">Voltar</button></div></div>`);
+        if(g==="x"){close();return}pcOk=true}
       for(const k of keys){
         hudT.textContent=HOW[k][0];hudP.textContent="";bg();
-        await screen(`<div class="dg-card"><p class="dg-step">${keys.length>1?`Teste ${keys.indexOf(k)+1} de ${keys.length}`:"Teste"}</p><h3>${HOW[k][0]}</h3><p>${HOW[k][1]}</p><p class="dg-dur">${HOW[k][2]}</p><button type="button" class="btn" data-go="1">Começar</button></div>`);
-        await countdown();out[k]=await RUN[k]();
+        const pr=screen(`<div class="dg-card"><p class="dg-step">${keys.length>1?`Teste ${keys.indexOf(k)+1} de ${keys.length}`:"Teste"}</p><h3>${HOW[k][0]}</h3><p>${HOW[k][1]}</p>${T?CTRL:""}<p class="dg-dur">${HOW[k][2]}</p>${T?sensUI():""}<button type="button" class="btn" data-go="1">Começar</button></div>`);
+        bindSens();await pr;
+        cam.x=cam.y=0;DBG.t="contagem";await countdown();out[k]=await RUN[k]();
       }
       const entry={d:new Date().toISOString(),s:{},r:{}};keys.forEach(k=>{entry.s[k]=out[k].score;entry.r[k]=out[k].raw});
       (db[DEV]=db[DEV]||[]).push(entry);db[DEV]=db[DEV].slice(-30);saveDb();render();
@@ -658,7 +811,7 @@
     const full=list.filter(e=>Object.keys(e.s).length===4).slice(-6).reverse();
     el.innerHTML=`<div class="dg-top"><div>${radar(vals,pv)}<p class="dg-leg"><i class="v"></i>Atual ${pv.some(v=>v!=null)?'<i class="p"></i>Anterior':""}</p></div>
       <div class="dg-score">${tot!==null?`<small>Nota geral</small><b>${tot}</b><span class="dg-badge">${level(tot)}</span>`:`<small>Perfil parcial</small><p class="muted">Faça os 4 testes para ter a nota geral.</p>`}
-      <p class="dg-dev">${T?"Resultados do celular":"Resultados do computador"} · ${new Date(list[list.length-1].d).toLocaleDateString("pt-BR")}</p></div></div>
+      <p class="dg-dev">${T?"Resultados do celular (modo jogo)":"Resultados do computador (mouse)"} · ${new Date(list[list.length-1].d).toLocaleDateString("pt-BR")}</p></div></div>
       <ul class="dg-skills">${SK.map((s,i)=>{const v=vals[i],d=v!=null&&pv[i]!=null?v-pv[i]:null;return `<li><span>${s.n}</span><i><em style="width:${v??0}%"></em></i><b>${v??"—"}</b>${d?`<em class="dg-d ${d>0?"up":"down"}">${d>0?"▲":"▼"} ${Math.abs(d)}</em>`:""}<small>${v!=null?esc(p[s.k].r):"Ainda não testado"}</small></li>`}).join("")}</ul>
       ${weak?`<div class="dg-rec"><small>Ponto a treinar primeiro</small><b>${REC[weak.k][0]}</b><p>${REC[weak.k][1]}</p><a href="${REC[weak.k][2]}">${REC[weak.k][3]}</a></div>`:""}
       ${full.length>1?`<div class="dg-hist"><small>Últimos diagnósticos completos</small><ol>${full.map(e=>{const t=Math.round(Object.values(e.s).reduce((a,b)=>a+b,0)/4);return `<li><span>${new Date(e.d).toLocaleDateString("pt-BR")}</span><i><em style="width:${t}%"></em></i><b>${t}</b></li>`}).join("")}</ol></div>`:""}
@@ -667,7 +820,7 @@
     c.onclick=()=>{if(!c.dataset.armed){c.dataset.armed="1";c.textContent="Confirmar: apagar resultados";setTimeout(()=>{if(c.isConnected){delete c.dataset.armed;c.textContent="Apagar resultados deste aparelho"}},3000);return}
       db[DEV]=[];saveDb();render()};
   }
-  const devEl=document.getElementById("dgDevice");if(devEl)devEl.textContent=T?"Celular ou tablet (toque)":"Computador (mouse)";
+  const devEl=document.getElementById("dgDevice");if(devEl)devEl.textContent=T?"Celular · tiro à esquerda, mira à direita":"Computador (mouse) · feito para celular";
   render();
-  window.__tksDiag={run,db:()=>db,dev:DEV,dbg:DBG};
+  window.__tksDiag={run,db:()=>db,dev:DEV,dbg:DBG,cam,aim:()=>AIM(),fire:()=>FIRE()};
 })();

@@ -1683,3 +1683,35 @@ html{scroll-padding-top:calc(var(--top) + 84px)}
   .bento{grid-template-columns:1fr}
   .bento .b-lead,.bento>:last-child:nth-child(even){grid-column:auto}
 }
+
+/* ===== diagnóstico no celular: girar, controles, sensibilidade ===== */
+.dg-rot{display:none;position:absolute;inset:0;z-index:4;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px;text-align:center;background:#07090d}
+.dg-rot svg{width:96px;height:96px;margin-bottom:8px}
+.dg-rot .ph{fill:none;stroke:var(--gold);stroke-width:3;transform-origin:32px 30px;animation:dgRot 2.4s var(--ease) infinite}
+.dg-rot .ar{fill:none;stroke:var(--red);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.dg-rot b{font-family:var(--f-display);font-weight:800;font-size:30px;text-transform:uppercase}
+.dg-rot p{margin:0;max-width:30ch;color:var(--muted)}
+@keyframes dgRot{0%,20%{transform:rotate(0)}55%,100%{transform:rotate(-90deg)}}
+@media (orientation:portrait){.dg-arena.mob .dg-rot{display:flex}}
+.dg-arena .dg-hud{z-index:5}
+.dg-arena.mob canvas{cursor:default}
+.dg-ctrl{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:4px 0 10px}
+.dg-ctrl span{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.055);font-size:13px;color:#d9dde4}
+.dg-ctrl i{width:12px;height:12px;border-radius:50%;flex:none}
+.dg-ctrl .f{background:var(--red);box-shadow:0 0 8px rgba(255,48,72,.6)}
+.dg-ctrl .a{border:2px dashed var(--gold)}
+.dg-sens{display:grid;gap:6px;margin:6px auto 4px;max-width:320px;text-align:left;font-size:13px;color:var(--muted)}
+.dg-sens span{display:flex;justify-content:space-between}
+.dg-sens output{color:var(--gold);font-weight:700}
+.dg-sens input{width:100%;accent-color:var(--gold)}
+.dg-pc .dg-acts{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+/* celular deitado: telas compactas, sem cortar */
+@media (max-height:520px){
+  .dg-screen{padding:8px}
+  .dg-card{max-height:calc(100% - 4px);overflow:auto;padding:14px 22px;width:min(560px,100%)}
+  .dg-card h3{font-size:24px;margin:0 0 6px}
+  .dg-card p{font-size:14px;margin-bottom:6px}
+  .dg-card .btn{min-height:42px;margin-top:4px}
+  .dg-hud{padding:6px 14px}
+  .dg-hud b{font-size:18px}
+}
